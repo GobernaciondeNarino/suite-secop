@@ -141,8 +141,10 @@ final class Rest_Api
         global $wpdb;
         $table = $this->db->get_table_name();
 
-        $per_page = min($request->get_param('per_page'), 100);
-        $page     = $request->get_param('page');
+        // max(1, ...): per_page=0 provocaba DivisionByZeroError en total_pages y
+        // page=0 un OFFSET negativo (error SQL). Igual que en get_consulta().
+        $per_page = max(1, min((int) $request->get_param('per_page'), 100));
+        $page     = max(1, (int) $request->get_param('page'));
         $offset   = ($page - 1) * $per_page;
 
         $where  = ['1=1'];
@@ -262,6 +264,24 @@ final class Rest_Api
     }
 
     // ── Datos de gráfica ───────────────────────────────────────
+
+    /**
+     * Devuelve la config de la gráfica SOLO si el post es una gráfica/card
+     * publicada. Sin esto, cualquier visitante podía ejecutar configuraciones
+     * de posts en borrador, privados o en papelera.
+     */
+    private function published_chart_config(int $chart_id): array|false
+    {
+        $post = get_post($chart_id);
+        if (!$post
+            || !in_array($post->post_type, ['secop_chart', 'secop_dep_card'], true)
+            || $post->post_status !== 'publish') {
+            return false;
+        }
+        $config = get_post_meta($chart_id, '_secop_chart_config', true);
+        return is_array($config) && $config ? $config : false;
+    }
+
     public function get_chart_data(\WP_REST_Request $request): \WP_REST_Response
     {
         // FIX I2: rate limit por IP (reutiliza consulta_rate_limited — máx. 30 req/min)
@@ -270,7 +290,7 @@ final class Rest_Api
         }
 
         $chart_id = (int) $request->get_param('id');
-        $config   = get_post_meta($chart_id, '_secop_chart_config', true);
+        $config   = $this->published_chart_config($chart_id);
 
         if (!$config) {
             return new \WP_REST_Response(['error' => 'Chart not found'], 404);
@@ -294,7 +314,7 @@ final class Rest_Api
         }
 
         $chart_id = (int) $request->get_param('id');
-        $config   = get_post_meta($chart_id, '_secop_chart_config', true);
+        $config   = $this->published_chart_config($chart_id);
 
         if (!$config) {
             status_header(404);
@@ -493,13 +513,7 @@ final class Rest_Api
      */
     private function consulta_rate_limited(): bool
     {
-        $ip_key = 'secop_consulta_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
-        $count  = (int) get_transient($ip_key);
-        if ($count > 30) {
-            return true;
-        }
-        set_transient($ip_key, $count + 1, MINUTE_IN_SECONDS);
-        return false;
+        return Rate_Limiter::limited('consulta', 30);
     }
 
     /**
@@ -570,7 +584,13 @@ final class Rest_Api
         if ($order_by !== '' && isset($columns[$order_by]) && !in_array($order_by, self::PII_COLS, true)) {
             $col = $order_by;
         }
-        return "ORDER BY `{$col}` {$dir}";
+        // Tie-breaker estable: sin él, la exportación por lotes con LIMIT/OFFSET
+        // sobre una columna con empates puede duplicar u omitir filas entre lotes.
+        $tie = '';
+        if ($col !== 'id' && isset($columns['id'])) {
+            $tie = ', `id` DESC';
+        }
+        return "ORDER BY `{$col}` {$dir}{$tie}";
     }
 
     public function get_consulta(\WP_REST_Request $request): \WP_REST_Response

@@ -69,6 +69,33 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.16.0 — Auditoría integral: seguridad, bugs y calidad (2026-08-24)
+
+**Seguridad (ver AUDITORIA.md para la lista completa):**
+- **Ley 1581 / PII:** el `documento_proveedor` ya no se expone en NINGÚN endpoint público: se eliminó del AJAX de filtros (`secop_suite_filter_search`), del explorador y las listas de contratistas (`secop_dep_explora_contratistas` / `secop_dep_lista`) y de la whitelist de campos públicos del explorador. La capa REST ya lo protegía; ahora la política es uniforme.
+- **XSS:** los tooltips de d3plus en `frontend.js` escapan título y celdas (d3plus los inserta con `innerHTML`; un nombre de contratista malicioso importado de datos.gov.co podía ejecutar JS). En `admin-import.js` el helper de escape ahora cubre comillas (los valores se interpolan en atributos) y el enlace `url_contrato` exige esquema `http(s)`.
+- Los endpoints públicos de gráficas (REST `/chart/{id}/*` y AJAX) solo sirven gráficas/cards **publicadas** (antes ejecutaban configs de borradores, privados o papelera).
+- La query personalizada valida ahora las tablas REALES de `FROM`/`JOIN` contra la whitelist (el check anterior por substring era evadible) y rechaza joins por coma.
+- Los logs se movieron a `wp-content/uploads/secop-suite-logs-{sufijo aleatorio}/` (antes vivían en una ruta pública predecible del plugin, protegida solo por `.htaccess` de Apache 2.2); `.htaccess` con sintaxis 2.2 + 2.4, migración automática del log antiguo.
+- El importador solo acepta hosts de la API en allowlist (`datos.gov.co`, filtrable con `secop_suite_allowed_api_hosts`).
+- Nuevo `Rate_Limiter` compartido (ventana fija): reemplaza 8 copias del limitador por IP y corrige que el TTL se reiniciara en cada petición (podía bloquear indefinidamente a un usuario legítimo).
+
+**Bugs corregidos:**
+- REST `/contracts`: `per_page=0` causaba un fatal (división por cero) y `page=0` un OFFSET negativo (error SQL).
+- Importador: un lote fallido provocaba `TypeError` fatal (`count(null)` en el `do…while`); ahora se salta el lote con tope de 3 fallos consecutivos. El candado `import_running` se renueva por lote (importaciones >1h se "auto-cancelaban") y una importación cancelada ya no se reporta como completada.
+- La página de importación entraba en un bucle de recargas cada 2 s durante ~1 hora tras completar una importación.
+- Los filtros de tipo "rango" de `[secop_filter]` nunca se aplicaban (se descartaban antes de evaluarse).
+- Activar/cambiar/desactivar la **Actualización Automática** ahora (re)programa el cron al guardar (antes solo surtía efecto al reactivar el plugin).
+- `fecha_fin` de importación: un "31 de diciembre" de un año pasado (default congelado en la activación) se avanza al año en curso — las importaciones programadas dejaban de traer datos nuevos en silencio.
+- Paginación y contador de la página Registros respetan los filtros activos; la limpieza de logs se procesa en `admin_init` (el redirect fallaba por "headers already sent").
+- Exportaciones por lotes: tie-breaker estable (`id`) en el ORDER BY para no duplicar/omitir filas entre lotes.
+- La invalidación de caché tras importar/truncar ahora también borra los cachés del módulo de Contratación (`secop_trk_*`).
+- Desinstalación: elimina también las cards de seguimiento, el VIEW `vista_secop_sysman`, todos los transients `secop_*` y el directorio de logs.
+
+**Herramientas de desarrollo:**
+- Skills UI/UX Pro Max en `.claude/skills/` y workflows de GitHub Actions: `claude.yml` (claude-code-action) y `security-review.yml` (claude-code-security-review).
+- Nueva `AUDITORIA.md`: lista completa de hallazgos (corregidos y pendientes) para las próximas iteraciones.
+
 ### v5.12.0 — Red ego (Rings) muestra toda la red al inicio + selector separado
 - La **Red ego `[secop_dep_rings]`** ahora muestra **toda la red de contratación al inicio** (todas las dependencias, contratistas, tipos y modalidades como grafo de fuerza d3 con layout acotado para responsividad con ~1700 nodos) en la **misma card**. Se **eliminó el autocentrado** en la dependencia de mayor valor.
 - Su selector de dependencia se **separó en el shortcode `[secop_dep_selector]`**, que enfoca el Rings (y demás elementos suscritos: treemap, listas) en una dependencia/modalidad/tipo mediante el **estado compartido a nivel de página** (`window.SecopCoord`). Al elegir una dependencia el Rings se redibuja como **red ego concéntrica** centrada en ella; al volver a «— Todas —» regresa a la red completa.

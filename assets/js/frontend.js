@@ -2,7 +2,7 @@
  * SECOP Suite - Frontend JavaScript
  *
  * @package SecopSuite
- * @version 5.2.3
+ * @version 5.16.0
  */
 
 (function($) {
@@ -39,6 +39,14 @@
             return new Intl.NumberFormat('es-CO', { style: 'decimal', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
         }
     };
+
+    // Los tooltips de d3plus insertan título y celdas con innerHTML: todo valor
+    // que provenga de la BD (datos importados de datos.gov.co) debe escaparse.
+    function esc(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    }
 
     /**
      * Safely resolve a d3plus constructor by name.
@@ -113,8 +121,8 @@
             ? config.tooltipFields
             : ['categoria', 'valor'];
         var tooltipRowBuilders = {
-            categoria: [config.xAxisTitle || 'Categoría', function(d) { return d.x; }],
-            valor:     [config.yAxisTitle || 'Valor', function(d) { return NumberFormatter.fullFormat(d.y); }],
+            categoria: [esc(config.xAxisTitle || 'Categoría'), function(d) { return esc(d.x); }],
+            valor:     [esc(config.yAxisTitle || 'Valor'), function(d) { return NumberFormatter.fullFormat(d.y); }],
             conteo:    ['Contratos', function(d) { return (d.count !== null && d.count !== undefined) ? d.count : ''; }]
         };
         var tooltipBody = [];
@@ -124,7 +132,11 @@
         if (!tooltipBody.length) {
             tooltipBody = [tooltipRowBuilders.categoria, tooltipRowBuilders.valor];
         }
-        const tooltipConfig = { tbody: tooltipBody };
+        // title también se inyecta como innerHTML por d3plus → escapar siempre.
+        const tooltipConfig = {
+            tbody: tooltipBody,
+            title: function(d) { return esc(d && (d.x !== undefined && d.x !== null) ? d.x : ''); }
+        };
         const yConfig = {
             title: config.yAxisTitle || 'Valor',
             tickFormat: function(d) { return NumberFormatter.format(d, numberFormat); }

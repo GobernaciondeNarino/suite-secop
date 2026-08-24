@@ -28,6 +28,9 @@ final class Filter
     /** Operadores de filtro permitidos */
     private const ALLOWED_OPERATORS = ['=', '!=', '>', '<', '>=', '<=', 'LIKE'];
 
+    /** Datos personales del proveedor — Ley 1581: nunca se devuelven al frontend público. */
+    private const PII_COLS = ['documento_proveedor', 'tipo_documento_proveedor'];
+
     public function __construct(Database $db)
     {
         $this->db = $db;
@@ -308,12 +311,9 @@ final class Filter
         }
 
         // Rate limiting
-        $ip_key = 'secop_frl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
-        $requests = (int) get_transient($ip_key);
-        if ($requests > 60) {
+        if (Rate_Limiter::limited('filter', 60)) {
             wp_send_json_error(['message' => 'Demasiadas solicitudes. Intente más tarde.'], 429);
         }
-        set_transient($ip_key, $requests + 1, MINUTE_IN_SECONDS);
 
         $config = get_post_meta($filter_id, '_secop_filter_config', true);
         if (!$config) {
@@ -344,17 +344,12 @@ final class Filter
             $column = $field_config['column'];
             if (!isset($valid_columns[$column])) continue;
 
-            $value = $filter_values[$column] ?? '';
-            if ($value === '' || $value === null) continue;
-
-            $operator = in_array($field_config['operator'], self::ALLOWED_OPERATORS, true)
-                ? $field_config['operator']
-                : '=';
-
+            // Range: la plantilla solo envía {columna}_from / {columna}_to (no existe
+            // input {columna}), así que este tipo debe evaluarse ANTES del descarte
+            // por valor vacío — de lo contrario los rangos nunca se aplicaban.
             if ($field_config['type'] === 'range') {
-                // Range: expect value_from and value_to
-                $from = $filter_values[$column . '_from'] ?? '';
-                $to = $filter_values[$column . '_to'] ?? '';
+                $from = sanitize_text_field((string) ($filter_values[$column . '_from'] ?? ''));
+                $to   = sanitize_text_field((string) ($filter_values[$column . '_to'] ?? ''));
                 if ($from !== '') {
                     $where_clauses[] = "`{$column}` >= %s";
                     $where_values[] = $from;
@@ -365,6 +360,13 @@ final class Filter
                 }
                 continue;
             }
+
+            $value = $filter_values[$column] ?? '';
+            if ($value === '' || $value === null) continue;
+
+            $operator = in_array($field_config['operator'], self::ALLOWED_OPERATORS, true)
+                ? $field_config['operator']
+                : '=';
 
             if ($field_config['type'] === 'checkbox') {
                 // Checkbox: multiple values
@@ -389,11 +391,12 @@ final class Filter
 
         $where_sql = implode(' AND ', $where_clauses);
 
-        // Result columns
+        // Result columns (Ley 1581: los datos personales del proveedor nunca se
+        // seleccionan ni devuelven, igual que en la capa REST).
         $select_columns = ['*'];
         if (!empty($config['result_columns'])) {
             $valid_result_cols = array_filter($config['result_columns'], function ($col) use ($valid_columns) {
-                return isset($valid_columns[$col]);
+                return isset($valid_columns[$col]) && !in_array($col, self::PII_COLS, true);
             });
             if (!empty($valid_result_cols)) {
                 // Always include id and urlproceso if show_url_link
@@ -425,6 +428,16 @@ final class Filter
         $all_values = array_merge($where_values, [$per_page, $offset]);
         $sql = "SELECT {$select_sql} FROM `{$table}` WHERE {$where_sql} ORDER BY `{$order_by}` {$order_dir} LIMIT %d OFFSET %d";
         $results = $wpdb->get_results($wpdb->prepare($sql, ...$all_values), ARRAY_A);
+
+        // Ley 1581: eliminar PII de cada fila (cubre también el caso SELECT *).
+        if ($results) {
+            foreach ($results as &$row) {
+                foreach (self::PII_COLS as $pii) {
+                    unset($row[$pii]);
+                }
+            }
+            unset($row);
+        }
 
         wp_send_json_success([
             'data'       => $results ?: [],

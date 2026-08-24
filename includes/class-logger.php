@@ -2,6 +2,11 @@
 /**
  * Logger — Escritura y lectura de logs del plugin con niveles y rotación.
  *
+ * v5.16.0: los logs viven en wp-content/uploads/secop-suite-logs-{sufijo aleatorio}/
+ * en lugar de la ruta pública y predecible del plugin. El sufijo aleatorio evita
+ * la descarga por URL en servidores que no procesan .htaccess (nginx, Apache con
+ * AllowOverride None) y los logs sobreviven a las actualizaciones del plugin.
+ *
  * @package SecopSuite
  */
 
@@ -15,7 +20,6 @@ if (!defined('ABSPATH')) {
 
 final class Logger
 {
-    private const LOG_DIR      = 'logs';
     private const LOG_FILE     = '.secop-import.log';
     private const MAX_LOG_SIZE = 5 * 1024 * 1024; // 5 MB
     private const MAX_ARCHIVES = 3;
@@ -26,23 +30,66 @@ final class Logger
     public const WARNING = 'WARNING';
     public const ERROR   = 'ERROR';
 
+    private static ?string $dir = null;
+
+    /**
+     * Directorio de logs dentro de uploads, con sufijo aleatorio persistente.
+     */
+    private static function dir(): string
+    {
+        if (self::$dir !== null) {
+            return self::$dir;
+        }
+
+        $suffix = get_option(SECOP_SUITE_PREFIX . 'log_dir_suffix');
+        if (!is_string($suffix) || $suffix === '') {
+            $suffix = wp_generate_password(16, false, false);
+            update_option(SECOP_SUITE_PREFIX . 'log_dir_suffix', $suffix, false);
+        }
+
+        $uploads   = wp_upload_dir(null, false);
+        self::$dir = trailingslashit($uploads['basedir']) . 'secop-suite-logs-' . $suffix;
+        return self::$dir;
+    }
+
+    /**
+     * Crea el directorio (con denegación .htaccess e index.php) si no existe y
+     * migra el log del directorio antiguo del plugin la primera vez.
+     */
+    private static function ensure_dir(): string
+    {
+        $dir = self::dir();
+
+        if (!file_exists($dir)) {
+            wp_mkdir_p($dir);
+        }
+
+        if (!file_exists($dir . '/.htaccess')) {
+            $htaccess = "<IfModule mod_authz_core.c>\nRequire all denied\n</IfModule>\n"
+                      . "<IfModule !mod_authz_core.c>\nOrder deny,allow\nDeny from all\n</IfModule>\n";
+            file_put_contents($dir . '/.htaccess', $htaccess, LOCK_EX);
+        }
+        if (!file_exists($dir . '/index.php')) {
+            file_put_contents($dir . '/index.php', '<?php // Silence is golden.', LOCK_EX);
+        }
+
+        // Migración desde el directorio antiguo dentro del plugin (pre-5.16.0).
+        $legacy = SECOP_SUITE_DIR . 'logs/' . self::LOG_FILE;
+        $file   = $dir . '/' . self::LOG_FILE;
+        if (!file_exists($file) && file_exists($legacy) && is_readable($legacy)) {
+            @copy($legacy, $file);
+            @unlink($legacy);
+        }
+
+        return $dir;
+    }
+
     /**
      * Registrar un mensaje con nivel.
      */
     public static function log(string $message, string $level = self::INFO): void
     {
-        $dir = SECOP_SUITE_DIR . self::LOG_DIR;
-
-        if (!file_exists($dir)) {
-            wp_mkdir_p($dir);
-            file_put_contents($dir . '/.htaccess', "Order deny,allow\nDeny from all", LOCK_EX);
-            file_put_contents($dir . '/index.php', '<?php // Silence is golden.', LOCK_EX);
-        }
-
-        if (!file_exists($dir . '/.htaccess')) {
-            file_put_contents($dir . '/.htaccess', "Order deny,allow\nDeny from all", LOCK_EX);
-        }
-
+        $dir  = self::ensure_dir();
         $file = $dir . '/' . self::LOG_FILE;
 
         // Rotación de log si supera el tamaño máximo
@@ -73,7 +120,7 @@ final class Logger
      */
     public static function read(): string
     {
-        $file = SECOP_SUITE_DIR . self::LOG_DIR . '/' . self::LOG_FILE;
+        $file = self::ensure_dir() . '/' . self::LOG_FILE;
         return file_exists($file) ? (string) file_get_contents($file) : '';
     }
 
@@ -82,7 +129,7 @@ final class Logger
      */
     public static function clear(): void
     {
-        $file = SECOP_SUITE_DIR . self::LOG_DIR . '/' . self::LOG_FILE;
+        $file = self::dir() . '/' . self::LOG_FILE;
         if (file_exists($file)) {
             file_put_contents($file, '', LOCK_EX);
         }
