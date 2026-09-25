@@ -1,8 +1,8 @@
-# Auditoría SECOP Suite — v5.16.0
+# Auditoría SECOP Suite — v5.16.0 (actualizada en v5.17.0)
 
 **Fecha:** 2026-08-24
 **Alcance:** todo el código PHP (núcleo, plantillas, desinstalador), JS propio (`assets/js/`, sin `vendor/`) y pruebas. Tres pasadas independientes: seguridad backend, XSS/plantillas/JS y calidad (bugs, duplicación, código deficiente), con verificación cruzada de cada hallazgo.
-**Estado de pruebas:** `php tests/run.php` → 30/30 OK antes y después de los cambios.
+**Estado de pruebas:** `php tests/run.php` → 30/30 OK en v5.16.0; 39/39 OK en v5.17.0 (más pruebas de extremo a extremo contra MariaDB 10.11 con `ONLY_FULL_GROUP_BY`).
 
 Leyenda de estado: ✅ corregido en v5.16.0 · ⏳ pendiente (priorizado para próximas versiones).
 
@@ -25,6 +25,7 @@ Leyenda de estado: ✅ corregido en v5.16.0 · ⏳ pendiente (priorizado para pr
 | S11 | BAJA | ⏳ | El AJAX público de gráficas devuelve la config interna completa (nombres reales de tablas/columnas → reconocimiento de esquema). Devolver solo claves de presentación, como ya hace el endpoint REST | `class-visualizer.php` (ajax_get_chart_data) |
 | S12 | BAJA | ⏳ | Actualizador desde GitHub sin verificación de integridad (hash/firma) del ZIP y con reactivación automática. Riesgo de cadena de suministro estándar; documentar o añadir verificación | `includes/class-updater.php` |
 | S13 | BAJA | ⏳ | El rate limiter usa `REMOTE_ADDR`: tras un proxy/CDN todos los visitantes comparten cubo. Considerar cabeceras de proxy confiables configurables | `includes/class-rate-limiter.php` |
+| S15 | MEDIA | ✅ v5.17.0 | La columna `tercero` del VIEW (identificación del tercero en Sysman) se exportaba en `/consulta/csv` y `/consulta/txt` (`SELECT *`) y podía usarse como filtro. Ahora es PII junto a `documento_proveedor` (lista única `Open_Data::PII_COLS`) | `includes/class-open-data.php`, `class-rest-api.php` |
 | S14 | INFO | — | Verificado sin hallazgos: SQL con `prepare` + whitelists/DESCRIBE en todas las rutas con entrada de usuario; nonces + capacidades en todos los AJAX de admin; escapado consistente en plantillas (`esc_html`/`esc_attr`/`esc_url`, `wp_json_encode` con `JSON_HEX_TAG\|JSON_HEX_APOS`); sin eval/deserialización/includes dinámicos/subida de archivos | — |
 
 ## 2. Bugs
@@ -49,6 +50,10 @@ Leyenda de estado: ✅ corregido en v5.16.0 · ⏳ pendiente (priorizado para pr
 | B16 | BAJO | ⏳ | Fallback AJAX de opciones de filtro para visitantes es código muerto (endpoint solo admin + nonce equivocado): select vacío/spinner eterno si falla el render server-side | `assets/js/frontend-filters.js`, `class-filter.php` |
 | B17 | BAJO | ⏳ | El formateador de miles del frontend formatea cualquier cadena numérica, incluidos números de contrato ("20240001" → "20.240.001") | `assets/js/frontend-filters.js` |
 | B18 | BAJO | ⏳ | Tabla legacy `$wpdb->prefix . 'wp_data_contracting'` queda como `wp_wp_…` (¿prefijo duplicado?); `LIKE 'dat_%'` con `_` como comodín sin `esc_like` | `includes/class-database.php` |
+| B19 | ALTO | ✅ v5.17.0 | Las APIs `/consulta*` devolvían un contrato una vez por asiento presupuestal (LEFT JOIN del VIEW) y repetían `valor_contrato` en cada fila; los asientos reimportados en Sysman aparecían como filas idénticas. Ahora `DISTINCT` sin ids internos + una fila por contrato por defecto (`agrupar=detalle` opcional) | `includes/class-open-data.php`, `class-rest-api.php` |
+| B20 | MEDIO | ✅ v5.17.0 | Sin herramienta para eliminar duplicados en la base (contratos registrados con dos números, asientos Sysman reimportados). Nuevo módulo Depuración BD con respaldo y restauración | `includes/class-deduplicator.php` |
+| B21 | MEDIO | ⏳ | El VIEW cruza asientos por `numero_de_proceso`: si un proceso tiene varios contratos legítimos, todos reciben los mismos asientos y la ejecución se cuenta en cada uno. El diagnóstico de Depuración BD lo cuantifica; la solución de fondo requiere un campo de cruce por contrato en Sysman | `includes/class-database.php` (create_view) |
+| B22 | BAJO | ⏳ | La pestaña «Consulta» de Registros (admin) sigue mostrando filas crudas del VIEW (una por asiento, máx. 200); podría reutilizar `Open_Data::consulta_sql()` | `secop-suite.php` (render_records_page) |
 
 ## 3. Código duplicado
 
@@ -56,7 +61,7 @@ Leyenda de estado: ✅ corregido en v5.16.0 · ⏳ pendiente (priorizado para pr
 |---|--------|----------|-----------|
 | D1 | ✅ | Rate limiter por IP copiado ~8 veces → extraído a `Rate_Limiter::limited()` | todas las clases con AJAX/REST |
 | D2 | ⏳ | `explora_contratistas()` y `lista_contratistas()` casi idénticos (~70 líneas): unificar (el primero es un caso particular del segundo) | `class-tracking.php` |
-| D3 | ⏳ | Escritores CSV (cabeceras+BOM+csv_safe+columnas sin PII) y TXT (anchos fijos) duplicados entre `export_*` y `get_consulta_*`: extraer `stream_csv()`/`stream_txt()`. De paso, `get_consulta_csv/txt` cargan toda la vigencia en memoria — reutilizar el lote de 2000 | `class-rest-api.php` |
+| D3 | ✅ v5.17.0 | Escritores CSV/TXT duplicados entre `export_*` y `get_consulta_*` → unificados en `stream_download()`, por lotes también para la vigencia | `class-rest-api.php` |
 | D4 | ⏳ | Grafo de fuerza completo (colores, leyenda, drag, ticks, tooltip) copiado línea a línea entre `dep-network.js` y `dep-rings.js`: extraer módulo `SSForceGraph` | `assets/js/` |
 | D5 | ⏳ | Switch de creación de gráficas d3plus (11 tipos) duplicado entre `frontend.js` y `admin-charts.js`: el admin debería delegar en `window.SSChartRender` | `assets/js/` |
 | D6 | ⏳ | `build_multi_y_query()` re-copia el WHERE y el mapa de meses de `build_chart_query()` (y `class-tracking.php` repite el mapa): extraer `build_where()` + constante `MONTH_NAMES` | `class-visualizer.php`, `class-tracking.php` |
@@ -74,6 +79,7 @@ Leyenda de estado: ✅ corregido en v5.16.0 · ⏳ pendiente (priorizado para pr
 | C6 | ⏳ | `invalidate_chart_cache` borra por SQL directo sobre `wp_options`: no funciona con object cache externo (Redis/Memcached). Considerar "cache version salt" en las claves | `class-importer.php` |
 | C7 | ⏳ | El detalle de contrato en admin muestra "Documento" vacío (la REST elimina la PII): decidir un endpoint admin autenticado que la incluya, o quitar la fila | `assets/js/admin-import.js` |
 | C8 | ⏳ | Changelog del README sin entradas v5.13–v5.15 | `README.md` |
+| C9 | ✅ v5.17.0 | `fputcsv` sin parámetro `escape` (obsoleto en PHP 8.4, podía mezclar avisos en la descarga) → escape vacío explícito (RFC 4180) | `class-rest-api.php` |
 
 ## 5. Recomendaciones de proceso
 

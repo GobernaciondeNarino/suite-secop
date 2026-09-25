@@ -31,6 +31,10 @@ if (is_string($log_suffix) && $log_suffix !== '') {
 $table = $wpdb->prefix . 'secop_contracts';
 $wpdb->query("DROP TABLE IF EXISTS {$table}"); // phpcs:ignore
 
+// Eliminar la tabla de respaldos del módulo de depuración (v5.17.0)
+$dedup_backup = $wpdb->prefix . 'secop_dedup_backup';
+$wpdb->query("DROP TABLE IF EXISTS `{$dedup_backup}`"); // phpcs:ignore
+
 // Eliminar el VIEW del módulo de seguimiento
 $view = $wpdb->prefix . 'vista_secop_sysman';
 $wpdb->query("DROP VIEW IF EXISTS `{$view}`"); // phpcs:ignore

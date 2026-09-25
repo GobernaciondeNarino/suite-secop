@@ -18,15 +18,11 @@ final class Rest_Api
     private Database $db;
     private const NAMESPACE = 'secop-suite/v1';
 
-    /** Columnas de datos personales del proveedor — Ley 1581 (nunca se exponen en endpoints públicos). */
-    private const PII_COLS = ['documento_proveedor', 'tipo_documento_proveedor'];
+    /** Columnas de datos personales — Ley 1581 (nunca se exponen en endpoints públicos). */
+    private const PII_COLS = Open_Data::PII_COLS;
 
-    /** Quita columnas de datos personales (documento del proveedor) de una fila — Ley 1581. */
-    private function strip_pii(array $row): array
-    {
-        unset($row['documento_proveedor'], $row['tipo_documento_proveedor']);
-        return $row;
-    }
+    /** Filas por lote en las descargas CSV/TXT. */
+    private const EXPORT_BATCH = 2000;
 
     public function __construct(Database $db)
     {
@@ -107,6 +103,8 @@ final class Rest_Api
         ]);
 
         // ── Consulta (Datos Abiertos — vigencia actual) ────────
+        // agrupar=contrato (predeterminado, una fila por contrato) | detalle.
+        $agrupar_arg = ['default' => 'contrato', 'sanitize_callback' => 'sanitize_key'];
         register_rest_route(self::NAMESPACE, '/consulta', [
             'methods'             => 'GET',
             'callback'            => [$this, 'get_consulta'],
@@ -114,6 +112,7 @@ final class Rest_Api
             'args'                => [
                 'page'     => ['default' => 1,   'sanitize_callback' => 'absint'],
                 'per_page' => ['default' => 100, 'sanitize_callback' => 'absint'],
+                'agrupar'  => $agrupar_arg,
             ],
         ]);
 
@@ -121,12 +120,14 @@ final class Rest_Api
             'methods'             => 'GET',
             'callback'            => [$this, 'get_consulta_csv'],
             'permission_callback' => '__return_true',
+            'args'                => ['agrupar' => $agrupar_arg],
         ]);
 
         register_rest_route(self::NAMESPACE, '/consulta/txt', [
             'methods'             => 'GET',
             'callback'            => [$this, 'get_consulta_txt'],
             'permission_callback' => '__return_true',
+            'args'                => ['agrupar' => $agrupar_arg],
         ]);
     }
 
@@ -340,9 +341,9 @@ final class Rest_Api
         // BOM para Excel
         fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
         // FIX I3: csv_safe on column headers and data cells
-        fputcsv($output, array_map([self::class, 'csv_safe'], array_keys($data[0])));
+        fputcsv($output, array_map([self::class, 'csv_safe'], array_keys($data[0])), ',', '"', '');
         foreach ($data as $row) {
-            fputcsv($output, array_map([self::class, 'csv_safe'], $row));
+            fputcsv($output, array_map([self::class, 'csv_safe'], $row), ',', '"', '');
         }
         fclose($output);
         exit;
@@ -352,78 +353,19 @@ final class Rest_Api
 
     public function export_csv(\WP_REST_Request $request): void
     {
-        // FIX C1: rate limit (reuse consulta_rate_limited — max 30 req/min per IP)
-        if ($this->consulta_rate_limited()) {
-            status_header(429);
-            echo 'Demasiadas solicitudes';
-            exit;
-        }
-
-        global $wpdb;
-        $table      = $this->db->get_table_name();
-        $batch_size = 2000;
-        $offset     = 0;
-
-        // v5.11.0: filtrado genérico por URL (=, _like, _min, _max) + order_by/order, sin PII.
-        [$filters, $fvals] = $this->url_field_filters($request, $table, self::PII_COLS);
-        $order_sql = $this->url_order($request, $table, 'fecha_de_firma_del_contrato', 'DESC');
-        $where_sql = '1=1';
-        if (!empty($filters)) {
-            $where_sql .= ' AND ' . implode(' AND ', $filters);
-        }
-
-        // First batch — needed to detect empty data and write CSV column headers
-        // Orden de params: [...filtros, LIMIT, OFFSET] — coincide con WHERE <filtros> ... LIMIT %d OFFSET %d.
-        $first_batch = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM {$table} WHERE {$where_sql} {$order_sql} LIMIT %d OFFSET %d",
-            array_merge($fvals, [$batch_size, $offset])
-        ), ARRAY_A);
-
-        if (empty($first_batch)) {
-            status_header(404);
-            echo 'No hay datos para exportar';
-            exit;
-        }
-
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="secop-contratos-' . date('Y-m-d') . '.csv"');
-        header('Cache-Control: no-cache, no-store, must-revalidate');
-        header('X-Content-Type-Options: nosniff');
-
-        // Ley 1581: lista ordenada de columnas SIN los datos personales del proveedor.
-        // Se calcula una vez y se usa tanto para la cabecera como para cada fila, de modo
-        // que las columnas queden alineadas y el documento del proveedor nunca se exporte.
-        $columns = array_values(array_diff(array_keys($first_batch[0]), self::PII_COLS));
-
-        $output = fopen('php://output', 'w');
-        fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
-        // FIX I3: csv_safe on column headers
-        fputcsv($output, array_map([self::class, 'csv_safe'], $columns));
-        // Stream all batches
-        $batch = $first_batch;
-        while (!empty($batch)) {
-            foreach ($batch as $row) {
-                // FIX I3 + Ley 1581: csv_safe en cada celda, en el mismo orden de columnas (sin PII)
-                $cells = [];
-                foreach ($columns as $col) {
-                    $cells[] = self::csv_safe($row[$col] ?? '');
-                }
-                fputcsv($output, $cells);
-            }
-            if (count($batch) < $batch_size) {
-                break;
-            }
-            $offset += $batch_size;
-            $batch = $wpdb->get_results($wpdb->prepare(
-                "SELECT * FROM {$table} WHERE {$where_sql} {$order_sql} LIMIT %d OFFSET %d",
-                array_merge($fvals, [$batch_size, $offset])
-            ), ARRAY_A);
-        }
-        fclose($output);
-        exit;
+        $this->export_contracts($request, 'csv');
     }
 
     public function export_txt(\WP_REST_Request $request): void
+    {
+        $this->export_contracts($request, 'txt');
+    }
+
+    /**
+     * Descarga de la tabla de contratos (un registro por número de contrato,
+     * garantizado por el índice único). Filtros y orden por URL, sin PII.
+     */
+    private function export_contracts(\WP_REST_Request $request, string $format): void
     {
         // FIX C1: rate limit (reuse consulta_rate_limited — max 30 req/min per IP)
         if ($this->consulta_rate_limited()) {
@@ -433,75 +375,94 @@ final class Rest_Api
         }
 
         global $wpdb;
-        $table      = $this->db->get_table_name();
-        $batch_size = 2000;
-        $offset     = 0;
+        $table = $this->db->get_table_name();
 
         // v5.11.0: filtrado genérico por URL (=, _like, _min, _max) + order_by/order, sin PII.
         [$filters, $fvals] = $this->url_field_filters($request, $table, self::PII_COLS);
         $order_sql = $this->url_order($request, $table, 'fecha_de_firma_del_contrato', 'DESC');
-        $where_sql = '1=1';
-        if (!empty($filters)) {
-            $where_sql .= ' AND ' . implode(' AND ', $filters);
-        }
+        $where_sql = $filters ? implode(' AND ', $filters) : '1=1';
 
-        // First batch — needed to check for data and compute column widths
-        // Orden de params: [...filtros, LIMIT, OFFSET] — coincide con WHERE <filtros> ... LIMIT %d OFFSET %d.
-        $first_batch = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM {$table} WHERE {$where_sql} {$order_sql} LIMIT %d OFFSET %d",
-            array_merge($fvals, [$batch_size, $offset])
-        ), ARRAY_A);
+        $this->stream_download(
+            $format,
+            'secop-contratos-' . date('Y-m-d'),
+            static function (int $offset, int $limit) use ($wpdb, $table, $where_sql, $order_sql, $fvals): array {
+                // Orden de params: [...filtros, LIMIT, OFFSET].
+                return $wpdb->get_results($wpdb->prepare(
+                    "SELECT * FROM {$table} WHERE {$where_sql} {$order_sql} LIMIT %d OFFSET %d",
+                    array_merge($fvals, [$limit, $offset])
+                ), ARRAY_A) ?: [];
+            }
+        );
+    }
 
-        if (empty($first_batch)) {
+    /**
+     * Escribe una descarga CSV o TXT por lotes. $fetch(offset, limit) devuelve
+     * filas ARRAY_A con un orden total (sin empates), de modo que ningún
+     * registro se repita ni se omita entre lotes. Las columnas PII se descartan.
+     */
+    private function stream_download(string $format, string $basename, callable $fetch): void
+    {
+        $batch = $fetch(0, self::EXPORT_BATCH);
+        if (empty($batch)) {
             status_header(404);
             echo 'No hay datos para exportar';
             exit;
         }
 
-        header('Content-Type: text/plain; charset=utf-8');
-        header('Content-Disposition: attachment; filename="secop-contratos-' . date('Y-m-d') . '.txt"');
+        $is_csv = $format === 'csv';
+        header('Content-Type: ' . ($is_csv ? 'text/csv' : 'text/plain') . '; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . sanitize_file_name($basename) . '.' . ($is_csv ? 'csv' : 'txt') . '"');
         header('Cache-Control: no-cache, no-store, must-revalidate');
         header('X-Content-Type-Options: nosniff');
 
-        // Compute column widths from first batch only (acceptable for fixed-width TXT)
-        // Ley 1581: se excluyen los datos personales del proveedor de la lista de columnas.
-        $columns = array_values(array_diff(array_keys($first_batch[0]), self::PII_COLS));
-        $widths  = [];
-        foreach ($columns as $col) {
-            $widths[$col] = max(mb_strlen($col), 15);
+        // Ley 1581: columnas fijadas una vez (cabecera y filas alineadas, sin PII).
+        $columns = array_values(array_diff(array_keys($batch[0]), self::PII_COLS));
+
+        $output = fopen('php://output', 'w');
+        if ($is_csv) {
+            fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
+            // FIX I3: csv_safe también en la cabecera. Escape vacío = RFC 4180.
+            fputcsv($output, array_map([self::class, 'csv_safe'], $columns), ',', '"', '');
+        } else {
+            $widths = [];
+            foreach ($columns as $col) {
+                $widths[$col] = max(mb_strlen($col), 15);
+            }
+            $line = '';
+            foreach ($columns as $col) {
+                $line .= str_pad($col, $widths[$col] + 2);
+            }
+            fwrite($output, $line . "\n" . str_repeat('=', mb_strlen($line)) . "\n");
         }
 
-        // Header row
-        $line = '';
-        foreach ($columns as $col) {
-            $line .= str_pad($col, $widths[$col] + 2);
-        }
-        echo $line . "\n";
-        echo str_repeat('=', mb_strlen($line)) . "\n";
-
-        // Stream all batches
-        $batch = $first_batch;
+        $offset = 0;
         while (!empty($batch)) {
             foreach ($batch as $row) {
+                if ($is_csv) {
+                    $cells = [];
+                    foreach ($columns as $col) {
+                        $cells[] = self::csv_safe($row[$col] ?? '');
+                    }
+                    fputcsv($output, $cells, ',', '"', '');
+                    continue;
+                }
                 $line = '';
                 foreach ($columns as $col) {
-                    $val = (string) ($row[$col] ?? '');
+                    $val = preg_replace('/\s+/u', ' ', (string) ($row[$col] ?? ''));
                     if (mb_strlen($val) > $widths[$col]) {
                         $val = mb_substr($val, 0, $widths[$col] - 2) . '..';
                     }
                     $line .= str_pad($val, $widths[$col] + 2);
                 }
-                echo $line . "\n";
+                fwrite($output, $line . "\n");
             }
-            if (count($batch) < $batch_size) {
+            if (count($batch) < self::EXPORT_BATCH) {
                 break;
             }
-            $offset += $batch_size;
-            $batch = $wpdb->get_results($wpdb->prepare(
-                "SELECT * FROM {$table} WHERE {$where_sql} {$order_sql} LIMIT %d OFFSET %d",
-                array_merge($fvals, [$batch_size, $offset])
-            ), ARRAY_A);
+            $offset += self::EXPORT_BATCH;
+            $batch = $fetch($offset, self::EXPORT_BATCH);
         }
+        fclose($output);
         exit;
     }
 
@@ -593,6 +554,53 @@ final class Rest_Api
         return "ORDER BY `{$col}` {$dir}{$tie}";
     }
 
+    /**
+     * Prepara la consulta deduplicada de /consulta a partir de la URL.
+     * Devuelve null si el VIEW no existe.
+     *
+     * @return array{select:string,count:string,columns:array<int,string>,order:string,params:array,grouping:string,vigencia:int}|null
+     */
+    private function consulta_query(\WP_REST_Request $request, string $default_order): ?array
+    {
+        if (!$this->db->view_exists()) {
+            return null;
+        }
+        global $wpdb;
+        $view     = $this->db->get_view_name();
+        $columns  = $this->db->get_table_columns($view);
+        $grouping = (string) $request->get_param('agrupar');
+        $grouping = in_array($grouping, Open_Data::GROUPINGS, true) ? $grouping : 'contrato';
+        $vigencia = (int) current_time('Y');
+
+        // v5.11.0: filtros por cualquier columna del VIEW (validados, sin PII). En la
+        // agrupación por contrato se aplican a las filas de detalle antes de agrupar.
+        [$filters, $fvals] = $this->url_field_filters($request, $view, self::PII_COLS);
+
+        $sql   = Open_Data::consulta_sql($view, $columns, $grouping, $filters);
+        $order = Open_Data::consulta_order(
+            $sql['columns'],
+            $grouping,
+            (string) $request->get_param('order_by'),
+            (string) ($request->get_param('order') ?: 'DESC'),
+            $grouping === 'detalle' ? 'valordebito' : $default_order
+        );
+
+        // Las listas de dependencias/rubros usan GROUP_CONCAT (1024 bytes por defecto).
+        $wpdb->query('SET SESSION group_concat_max_len = 65535');
+
+        return $sql + [
+            'order'    => $order,
+            // Orden de params: [vigencia, ...filtros] — WHERE YEAR=%d AND <filtros>.
+            'params'   => array_merge([$vigencia], $fvals),
+            'grouping' => $grouping,
+            'vigencia' => $vigencia,
+        ];
+    }
+
+    /**
+     * JSON paginado de la vigencia actual SIN duplicados. Por defecto una fila por
+     * contrato (agrupar=contrato); agrupar=detalle entrega un asiento distinto por fila.
+     */
     public function get_consulta(\WP_REST_Request $request): \WP_REST_Response
     {
         // FIX 4: rate limit por IP
@@ -600,54 +608,36 @@ final class Rest_Api
             return new \WP_REST_Response(['message' => 'Demasiadas solicitudes'], 429);
         }
         global $wpdb;
-        $view     = $this->db->get_view_name();
-        $vigencia = (int) current_time('Y');
         $per_page = max(1, min((int) $request->get_param('per_page'), 1000));
         $page     = max(1, (int) $request->get_param('page'));
         $offset   = ($page - 1) * $per_page;
 
-        // v5.11.0: filtrado genérico por cualquier columna de la vista desde la URL
-        // (=, _like, _min, _max) + order_by/order, validados contra columnas reales y
-        // sin exponer/filtrar datos personales (PII). El default de orden es valordebito DESC.
-        [$filters, $fvals] = $this->url_field_filters($request, $view, self::PII_COLS);
-        $order_sql = $this->url_order($request, $view, 'valordebito', 'DESC');
-
-        $where_sql = 'YEAR(`fecha_de_firma_del_contrato`) = %d';
-        if (!empty($filters)) {
-            $where_sql .= ' AND ' . implode(' AND ', $filters);
-        }
-
-        // La clave de caché incluye el hash de TODOS los parámetros (filtros + orden),
-        // de modo que distintas combinaciones de filtros se cachean por separado.
-        $cache_key = 'secop_trk_' . md5('rest_consulta|' . $page . '|' . $per_page . '|' . $vigencia . '|' . md5(wp_json_encode($request->get_params())));
+        // La clave de caché incluye TODOS los parámetros (filtros, orden, agrupación).
+        $cache_key = 'secop_trk_' . md5('rest_consulta_v2|' . $page . '|' . $per_page . '|' . current_time('Y') . '|' . md5((string) wp_json_encode($request->get_params())));
         $cached    = get_transient($cache_key);
         if (is_array($cached)) {
             return new \WP_REST_Response($cached);
         }
 
-        // v5.9.0: la vista cambió (LEFT JOIN desde secop_contracts). La vigencia es
-        // YEAR(fecha_de_firma_del_contrato); las columnas del asiento se renombraron a
-        // *_asiento. Se conservan los alias `anio`/`mes` del payload para no romper a
-        // los consumidores (anio = año de firma; mes = mes del asiento Sysman). Los
-        // contratos sin cruce Sysman se etiquetan "No Registra SYSMAN".
-        // Orden de params: [vigencia, ...filtros, per_page, offset] — coincide con los
-        // placeholders: WHERE YEAR=%d AND <filtros %s...> ... LIMIT %d OFFSET %d.
-        $params = array_merge([$vigencia], $fvals, [$per_page, $offset]);
-        $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT COALESCE(NULLIF(`nombredependencia`,''),'No Registra SYSMAN') AS nombredependencia,
-                    numero_de_proceso, numero_del_contrato,
-                    COALESCE(NULLIF(`nombretercero`,''), NULLIF(`nom_raz_social_contratista`,''),'No Registra SYSMAN') AS nombretercero,
-                    valordebito, valorcredito, saldoporejecutaresp,
-                    valor_contrato, YEAR(`fecha_de_firma_del_contrato`) AS anio, mes_asiento AS mes
-             FROM `{$view}` WHERE {$where_sql}
-             {$order_sql} LIMIT %d OFFSET %d",
-            $params
+        $q = $this->consulta_query($request, 'valor_efectivo');
+        if ($q === null) {
+            return new \WP_REST_Response(['message' => 'La vista de consulta no está disponible'], 503);
+        }
+
+        $total = (int) $wpdb->get_var($wpdb->prepare($q['count'], $q['params']));
+        $rows  = $wpdb->get_results($wpdb->prepare(
+            "{$q['select']} {$q['order']} LIMIT %d OFFSET %d",
+            array_merge($q['params'], [$per_page, $offset])
         ), ARRAY_A);
 
         $payload = [
-            'vigencia' => $vigencia,
-            'page'     => $page,
-            'data'     => $rows ?: [],
+            'vigencia'    => $q['vigencia'],
+            'agrupacion'  => $q['grouping'],
+            'page'        => $page,
+            'per_page'    => $per_page,
+            'total'       => $total,
+            'total_pages' => max(1, (int) ceil($total / $per_page)),
+            'data'        => $rows ?: [],
         ];
         set_transient($cache_key, $payload, 30 * MINUTE_IN_SECONDS);
 
@@ -656,63 +646,16 @@ final class Rest_Api
 
     public function get_consulta_csv(\WP_REST_Request $request): void
     {
-        // FIX 4: rate limit por IP
-        if ($this->consulta_rate_limited()) {
-            status_header(429);
-            echo 'Demasiadas solicitudes';
-            exit;
-        }
-        global $wpdb;
-        $view     = $this->db->get_view_name();
-        $vigencia = (int) current_time('Y');
-
-        // Exporta TODA la información de la vista (todas las columnas) para la vigencia actual.
-        // v5.9.0: vigencia por año de firma del contrato.
-        // v5.11.0: filtrado genérico por URL (=, _like, _min, _max) + order_by/order, sin PII.
-        [$filters, $fvals] = $this->url_field_filters($request, $view, self::PII_COLS);
-        $order_sql = $this->url_order($request, $view, 'valor_contrato', 'DESC');
-        $where_sql = 'YEAR(`fecha_de_firma_del_contrato`) = %d';
-        if (!empty($filters)) {
-            $where_sql .= ' AND ' . implode(' AND ', $filters);
-        }
-        // Orden de params: [vigencia, ...filtros] — coincide con WHERE YEAR=%d AND <filtros>.
-        $data = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM `{$view}` WHERE {$where_sql} {$order_sql}",
-            array_merge([$vigencia], $fvals)
-        ), ARRAY_A);
-
-        if (empty($data)) {
-            status_header(404);
-            echo 'No hay datos para exportar';
-            exit;
-        }
-
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="secop-consulta-' . $vigencia . '.csv"');
-        header('Cache-Control: no-cache, no-store, must-revalidate');
-        header('X-Content-Type-Options: nosniff');
-
-        // Ley 1581: lista ordenada de columnas SIN los datos personales del proveedor,
-        // usada para la cabecera y para cada fila (columnas alineadas, sin documento del proveedor).
-        $columns = array_values(array_diff(array_keys($data[0]), self::PII_COLS));
-
-        $output = fopen('php://output', 'w');
-        fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
-        // FIX 5: cabecera de columnas (nombres de columna son internos, seguros; se sanitizan por si acaso)
-        fputcsv($output, array_map([self::class, 'csv_safe'], $columns));
-        foreach ($data as $row) {
-            // FIX 5 + Ley 1581: csv_safe en cada celda, en el mismo orden de columnas (sin PII)
-            $cells = [];
-            foreach ($columns as $col) {
-                $cells[] = self::csv_safe($row[$col] ?? '');
-            }
-            fputcsv($output, $cells);
-        }
-        fclose($output);
-        exit;
+        $this->export_consulta($request, 'csv');
     }
 
     public function get_consulta_txt(\WP_REST_Request $request): void
+    {
+        $this->export_consulta($request, 'txt');
+    }
+
+    /** Descarga completa de la vigencia actual SIN duplicados (misma lógica que el JSON). */
+    private function export_consulta(\WP_REST_Request $request, string $format): void
     {
         // FIX 4: rate limit por IP
         if ($this->consulta_rate_limited()) {
@@ -720,63 +663,25 @@ final class Rest_Api
             echo 'Demasiadas solicitudes';
             exit;
         }
-        global $wpdb;
-        $view     = $this->db->get_view_name();
-        $vigencia = (int) current_time('Y');
 
-        // Exporta TODA la información de la vista (todas las columnas) para la vigencia actual.
-        // v5.9.0: vigencia por año de firma del contrato.
-        // v5.11.0: filtrado genérico por URL (=, _like, _min, _max) + order_by/order, sin PII.
-        [$filters, $fvals] = $this->url_field_filters($request, $view, self::PII_COLS);
-        $order_sql = $this->url_order($request, $view, 'valor_contrato', 'DESC');
-        $where_sql = 'YEAR(`fecha_de_firma_del_contrato`) = %d';
-        if (!empty($filters)) {
-            $where_sql .= ' AND ' . implode(' AND ', $filters);
-        }
-        // Orden de params: [vigencia, ...filtros] — coincide con WHERE YEAR=%d AND <filtros>.
-        $data = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM `{$view}` WHERE {$where_sql} {$order_sql}",
-            array_merge([$vigencia], $fvals)
-        ), ARRAY_A);
-
-        if (empty($data)) {
+        $q = $this->consulta_query($request, 'valor_efectivo');
+        if ($q === null) {
             status_header(404);
             echo 'No hay datos para exportar';
             exit;
         }
 
-        header('Content-Type: text/plain; charset=utf-8');
-        header('Content-Disposition: attachment; filename="secop-consulta-' . $vigencia . '.txt"');
-        header('Cache-Control: no-cache, no-store, must-revalidate');
-        header('X-Content-Type-Options: nosniff');
-
-        // Ley 1581: se excluyen los datos personales del proveedor de la lista de columnas.
-        $columns = array_values(array_diff(array_keys($data[0]), self::PII_COLS));
-        $widths  = [];
-        foreach ($columns as $col) {
-            $widths[$col] = max(mb_strlen($col), 15);
-        }
-
-        // Header row
-        $line = '';
-        foreach ($columns as $col) {
-            $line .= str_pad($col, $widths[$col] + 2);
-        }
-        echo $line . "\n";
-        echo str_repeat('=', mb_strlen($line)) . "\n";
-
-        // Data rows
-        foreach ($data as $row) {
-            $line = '';
-            foreach ($columns as $col) {
-                $val = (string) ($row[$col] ?? '');
-                if (mb_strlen($val) > $widths[$col]) {
-                    $val = mb_substr($val, 0, $widths[$col] - 2) . '..';
-                }
-                $line .= str_pad($val, $widths[$col] + 2);
+        global $wpdb;
+        $suffix = $q['grouping'] === 'detalle' ? '-detalle' : '';
+        $this->stream_download(
+            $format,
+            'secop-consulta-' . $q['vigencia'] . $suffix,
+            static function (int $offset, int $limit) use ($wpdb, $q): array {
+                return $wpdb->get_results($wpdb->prepare(
+                    "{$q['select']} {$q['order']} LIMIT %d OFFSET %d",
+                    array_merge($q['params'], [$limit, $offset])
+                ), ARRAY_A) ?: [];
             }
-            echo $line . "\n";
-        }
-        exit;
+        );
     }
 }

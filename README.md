@@ -49,7 +49,13 @@ GET /wp-json/secop-suite/v1/contracts/{id}   # Detalle de contrato
 GET /wp-json/secop-suite/v1/stats            # Estadísticas generales
 GET /wp-json/secop-suite/v1/chart/{id}/data  # Datos de gráfica
 GET /wp-json/secop-suite/v1/chart/{id}/csv   # Descargar CSV
+GET /wp-json/secop-suite/v1/export/csv|txt   # Descarga completa de contratos
+GET /wp-json/secop-suite/v1/consulta         # Ejecución de la vigencia, una fila por contrato (?agrupar=detalle)
+GET /wp-json/secop-suite/v1/consulta/csv|txt # Descarga de la vigencia sin duplicados
+GET /wp-json/secop-suite/v1/diccionario      # Diccionario de datos (JSON)
 ```
+
+Guía pública de la API con diccionario de campos: `[secop_diccionario api="todas|contratos|consulta" ejemplos="si|no"]`.
 
 ### Comandos WP-CLI
 ```bash
@@ -64,10 +70,34 @@ wp secop truncate --yes                            # Limpiar datos
 - Modal de detalle de contrato con información completa
 - Sistema de logs con información del sistema
 - Panel de información de API REST y comandos CLI
+- **Depuración BD** (v5.17.0): diagnóstico de duplicados, eliminación con respaldo y restauración por lote, restauración del índice único por número de contrato
 
 ---
 
 ## Changelog
+
+### v5.17.0 — Depuración de base de datos, APIs sin duplicados y diccionario de datos (2026-09-25)
+
+**Nuevo módulo «Depuración BD»** (SECOP Suite → Depuración BD, solo administradores):
+- **Diagnóstico**: registros por tabla, estado del índice único por número de contrato, procesos con varios contratos (comparten asientos de Sysman en la vista), rubros repetidos en el plan presupuestal y filas/contratos de la vista de consulta.
+- **Análisis de duplicados** sobre la tabla de contratos, `sysman_auxiliar_cuentas`, `sysman_plan_presupuestal` y tablas `dat_*`, con criterios predefinidos (filas idénticas; mismo contrato registrado con dos números; mismo asiento; mismo rubro) o personalizados. Muestra el número de grupos, las filas a eliminar y una muestra para revisión.
+- **Comparación exacta y segura**: huella SHA-256 que distingue NULL de vacío, mayúsculas, tildes y espacios, y compara el valor completo (un `GROUP BY` sobre TEXT solo compara los primeros 1024 bytes y habría tomado por iguales textos distintos). Opción para ignorar filas con campos del criterio vacíos.
+- **Eliminación con respaldo**: se conserva un registro por grupo (el de mayor o menor ID); cada fila eliminada se guarda en `{prefix}secop_dedup_backup` y puede **restaurarse** por lote. Lotes de 500 en transacción, máximo 20.000 filas por ejecución, candado contra ejecuciones simultáneas o durante una importación, registro en el log.
+- **Restaurar el índice único** `unique_contract` cuando falta y ya no hay números repetidos.
+
+**Datos Abiertos — APIs sin información duplicada:**
+- El VIEW cruza cada contrato con todos sus asientos presupuestales, así que `/consulta`, `/consulta/csv` y `/consulta/txt` devolvían un contrato una vez por asiento (y repetían `valor_contrato` en cada fila). Ahora parten de un conjunto `DISTINCT` de filas de detalle (sin los ids internos de cada tabla, para que colapsen los asientos reimportados en Sysman) y, por defecto, **entregan una fila por contrato** (`agrupar=contrato`) con los valores presupuestales sumados, `valor_efectivo`, dependencias y rubros. `agrupar=detalle` entrega una fila por asiento distinto.
+- La respuesta JSON de `/consulta` incluye `agrupacion`, `per_page`, `total` y `total_pages`. Orden total con desempates para que la paginación y las descargas por lotes no repitan ni omitan filas; las descargas de la vigencia ahora también se generan por lotes.
+- ⚠️ Cambio de formato: las filas de `/consulta` pasan a ser por contrato. Para el comportamiento anterior (una fila por asiento) use `?agrupar=detalle`.
+- **Privacidad**: la columna `tercero` del VIEW (identificación del tercero en Sysman) se trata como dato personal (Ley 1581): ya no se exporta en el CSV/TXT de la vigencia ni se puede usar como filtro u orden.
+- Escritor CSV/TXT único para `/export/*` y `/consulta/*` (elimina la duplicación D3 de la auditoría); CSV conforme a RFC 4180 y compatible con PHP 8.4; en TXT los saltos de línea de los textos ya no rompen el ancho fijo.
+
+**Nuevo shortcode `[secop_diccionario]`** y endpoint **`GET /wp-json/secop-suite/v1/diccionario`**:
+- Guía pública de la API: cómo funciona, puntos de acceso, **diccionario de campos** (nombre, tipo y descripción, generado a partir de las columnas reales de la base y nunca con datos personales), parámetros de filtrado, ejemplos con enlaces, estructura de la respuesta JSON y condiciones de uso (límite de solicitudes, caché, privacidad).
+- Atributos: `api="todas|contratos|consulta"`, `ejemplos="si|no"`, `titulo="…"`. El endpoint devuelve el mismo diccionario en JSON para portales de datos y automatizaciones.
+- Los esquemas viven en la nueva clase `Open_Data`, que usan a la vez la API y el diccionario, de modo que la documentación no puede divergir de la respuesta real.
+
+**Pruebas**: 9 pruebas unitarias nuevas (39 en total) y verificación de extremo a extremo contra MariaDB 10.11 con `ONLY_FULL_GROUP_BY`.
 
 ### v5.16.0 — Auditoría integral: seguridad, bugs y calidad (2026-08-24)
 

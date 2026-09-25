@@ -1,0 +1,150 @@
+/**
+ * SECOP Suite — Diccionario de datos [secop_diccionario] (v5.17.0).
+ *
+ * Hoja independiente: se carga en el frontend y en la página admin de Datos
+ * Abiertos. Usa los tokens de frontend.css cuando existen, con valores de
+ * respaldo para el admin.
+ *
+ * @package SecopSuite
+ */
+/* ==========================================================================
+   Diccionario de datos [secop_diccionario] — v5.17.0
+   ========================================================================== */
+.ss-dicc {
+    font-family: var(--ss-font, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif);
+    color: var(--ss-gray-900, #212529);
+    margin: 24px 0;
+    line-height: 1.55;
+}
+.ss-dicc-header { margin-bottom: 16px; }
+.ss-dicc-title { margin: 0 0 8px; font-size: 1.6em; }
+.ss-dicc-lead { margin: 0 0 8px; color: var(--ss-gray-700, #495057); max-width: 72ch; }
+.ss-dicc-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.875em;
+    background: var(--ss-gray-100, #f8f9fa);
+    border: 1px solid var(--ss-gray-200, #e9ecef);
+    border-radius: var(--ss-radius, 4px);
+    padding: 1px 6px;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+.ss-dicc-steps {
+    list-style: none;
+    counter-reset: ss-step;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    padding: 0;
+    margin: 0 0 24px;
+}
+.ss-dicc-step {
+    counter-increment: ss-step;
+    background: var(--ss-white, #ffffff);
+    border: 1px solid var(--ss-gray-200, #e9ecef);
+    border-top: 3px solid var(--ss-primary, #0082c6);
+    border-radius: var(--ss-radius-lg, 8px);
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.ss-dicc-step strong::before {
+    content: counter(ss-step) ". ";
+    color: var(--ss-primary, #0082c6);
+}
+.ss-dicc-step span { color: var(--ss-gray-700, #495057); font-size: 0.925em; }
+.ss-dicc-dataset {
+    background: var(--ss-white, #ffffff);
+    border: 1px solid var(--ss-gray-200, #e9ecef);
+    border-radius: var(--ss-radius-lg, 8px);
+    box-shadow: var(--ss-shadow, 0 2px 8px rgba(0, 0, 0, 0.1));
+    padding: 20px;
+    margin: 0 0 20px;
+}
+.ss-dicc-dataset h3 { margin: 0 0 8px; font-size: 1.3em; }
+.ss-dicc-dataset h4 { margin: 20px 0 8px; font-size: 1.05em; }
+.ss-dicc-unique {
+    background: #e8f4fb;
+    border-left: 4px solid var(--ss-primary, #0082c6);
+    border-radius: var(--ss-radius, 4px);
+    padding: 10px 14px;
+}
+.ss-dicc-warning {
+    background: #fff4e5;
+    border-left: 4px solid #d97706;
+    border-radius: var(--ss-radius, 4px);
+    padding: 10px 14px;
+}
+.ss-dicc-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+}
+.ss-dicc-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.925em;
+}
+.ss-dicc-table th,
+.ss-dicc-table td {
+    text-align: left;
+    vertical-align: top;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--ss-gray-200, #e9ecef);
+}
+.ss-dicc-table thead th {
+    background: var(--ss-gray-100, #f8f9fa);
+    color: var(--ss-gray-800, #343a40);
+    font-weight: 600;
+    white-space: nowrap;
+}
+.ss-dicc-table tbody tr:hover { background: var(--ss-gray-100, #f8f9fa); }
+.ss-dicc-badge {
+    display: inline-block;
+    background: var(--ss-success, #28a745);
+    color: var(--ss-white, #ffffff);
+    border-radius: var(--ss-radius, 4px);
+    font-size: 0.75em;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 2px 8px;
+}
+.ss-dicc-fields {
+    border: 1px solid var(--ss-gray-200, #e9ecef);
+    border-radius: var(--ss-radius, 4px);
+    margin: 12px 0;
+    padding: 0 14px;
+}
+.ss-dicc-fields > summary {
+    cursor: pointer;
+    font-weight: 600;
+    padding: 12px 0;
+}
+.ss-dicc-fields > summary:focus-visible,
+.ss-dicc a:focus-visible {
+    outline: 2px solid var(--ss-primary, #0082c6);
+    outline-offset: 2px;
+}
+.ss-dicc-fields[open] > summary { border-bottom: 1px solid var(--ss-gray-200, #e9ecef); margin-bottom: 8px; }
+.ss-dicc-examples,
+.ss-dicc-notes { padding-left: 20px; }
+.ss-dicc-examples li { margin-bottom: 8px; }
+.ss-dicc-examples li span { display: block; color: var(--ss-gray-700, #495057); font-size: 0.925em; }
+.ss-dicc-examples a { text-decoration: none; }
+.ss-dicc-pre {
+    background: var(--ss-gray-900, #212529);
+    color: var(--ss-gray-100, #f8f9fa);
+    border-radius: var(--ss-radius, 4px);
+    padding: 14px;
+    overflow-x: auto;
+    font-size: 0.85em;
+    line-height: 1.45;
+}
+.ss-dicc-pre code { background: none; border: 0; color: inherit; padding: 0; }
+.ss-dicc-machine { margin-top: 16px; }
+@media (max-width: 600px) {
+    .ss-dicc-dataset { padding: 14px; }
+    .ss-dicc-table th,
+    .ss-dicc-table td { padding: 6px 8px; }
+}
