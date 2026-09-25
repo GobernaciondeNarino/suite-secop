@@ -1874,3 +1874,73 @@
     border-radius: 3px;
     flex-shrink: 0;
 }
+
+/* ==========================================================================
+   Depuración de base de datos — v5.17.0
+   ========================================================================== */
+.ss-dedup-lead { max-width: 80ch; font-size: 14px; }
+.ss-dedup .ss-panel { margin-bottom: 20px; }
+.ss-dedup-diag { max-width: 720px; margin-bottom: 12px; }
+.ss-dedup-checks { margin: 12px 0; }
+.ss-dedup-checks li {
+    display: block;
+    padding: 8px 12px 8px 36px;
+    position: relative;
+    border-left: 4px solid #00a32a;
+    background: #f0f6f0;
+    margin-bottom: 8px;
+    max-width: 90ch;
+}
+.ss-dedup-checks li.is-warn { border-left-color: #dba617; background: #fcf9e8; }
+.ss-dedup-checks li .dashicons { position: absolute; left: 10px; top: 8px; color: #00a32a; }
+.ss-dedup-checks li.is-warn .dashicons { color: #b26200; }
+.ss-dedup-preset { display: block; margin-bottom: 6px; }
+.ss-dedup-custom { margin-top: 10px; }
+.ss-dedup-custom > summary { cursor: pointer; font-weight: 600; }
+.ss-dedup-columns {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 4px 16px;
+    margin-top: 8px;
+}
+.ss-dedup-coltype { color: #646970; font-size: 12px; }
+.ss-dedup-status { min-height: 1.5em; margin: 8px 0; font-weight: 600; }
+.ss-dedup-status.is-error { color: #b32d2e; }
+.ss-dedup-status.is-success { color: #007017; }
+.ss-dedup-summary { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; align-items: center; }
+.ss-dedup-stat {
+    background: #fff;
+    border: 1px solid #dcdcde;
+    border-radius: 6px;
+    padding: 10px 16px;
+    min-width: 140px;
+}
+.ss-dedup-stat strong { display: block; font-size: 22px; line-height: 1.2; }
+.ss-dedup-stat span { color: #50575e; }
+.ss-dedup-scroll { overflow-x: auto; max-width: 100%; }
+.ss-dedup-caption { caption-side: bottom; text-align: left; padding: 6px 0; color: #646970; }
+.ss-dedup-danger {
+    border: 1px solid #d63638;
+    border-left-width: 4px;
+    border-radius: 4px;
+    background: #fcf0f1;
+    padding: 12px 16px;
+    margin-top: 16px;
+}
+.ss-dedup-danger h3 { margin-top: 0; }
+.ss-button-danger.button-primary { background: #d63638; border-color: #d63638; }
+.ss-button-danger.button-primary:hover,
+.ss-button-danger.button-primary:focus { background: #b32d2e; border-color: #b32d2e; }
+.ss-dedup .button .dashicons { vertical-align: text-bottom; }
+.ss-dedup select { max-width: 100%; }
+.ss-dedup .form-table td,
+.ss-dedup-preset { overflow-wrap: anywhere; }
+@media screen and (max-width: 782px) {
+    .ss-dedup .form-table,
+    .ss-dedup .form-table tbody,
+    .ss-dedup .form-table tr,
+    .ss-dedup .form-table th,
+    .ss-dedup .form-table td { display: block; width: auto; padding-right: 0; }
+    .ss-dedup .form-table select { width: 100%; }
+    .ss-dedup-columns { grid-template-columns: 1fr; }
+}

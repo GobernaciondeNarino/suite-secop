@@ -339,7 +339,7 @@ final class Database
     {
         global $wpdb;
         if (!$this->sysman_tables_exist()) {
-            Logger::log('VIEW no creado: faltan tablas Sysman (sysman_auxiliar_cuentas / sysman_plan_presupuestal)');
+            Logger::warning('VIEW no creado: faltan tablas Sysman (sysman_auxiliar_cuentas / sysman_plan_presupuestal)');
             return false;
         }
         $view = $this->get_view_name();
@@ -374,7 +374,7 @@ final class Database
         // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         $result = $wpdb->query($sql);
         if ($result === false) {
-            Logger::log('Error al crear VIEW: ' . $wpdb->last_error);
+            Logger::error('Error al crear VIEW: ' . $wpdb->last_error);
             return false;
         }
         Logger::info("VIEW {$view} creado/actualizado");

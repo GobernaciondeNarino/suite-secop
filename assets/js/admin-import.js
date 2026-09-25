@@ -2,7 +2,7 @@
  * SECOP Suite - Admin JavaScript
  *
  * @package SecopSuite
- * @version 4.1.0
+ * @version 5.16.0
  */
 
 (function($) {
@@ -12,10 +12,20 @@
      * Escapa HTML para prevenir XSS al insertar en el DOM.
      */
     function escapeHtml(text) {
+        // Escapa también comillas: los valores se interpolan en atributos HTML
+        // (createTextNode/innerHTML no las escapa y permitía romper atributos).
         if (!text) return '';
-        var div = document.createElement('div');
-        div.appendChild(document.createTextNode(String(text)));
-        return div.innerHTML;
+        return String(text)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    }
+
+    /**
+     * Devuelve la URL solo si usa esquema http(s); evita javascript: u otros
+     * esquemas peligrosos en datos importados de la API.
+     */
+    function safeHttpUrl(url) {
+        return /^https?:\/\//i.test(String(url || '')) ? String(url) : '';
     }
 
     /**
@@ -151,16 +161,25 @@
                         );
 
                         if (data.status === 'complete') {
+                            // Solo recargar si la importación corrió en ESTA sesión; el
+                            // transient de progreso conserva 'complete' hasta 1 hora y sin
+                            // esta guarda la página entraba en un bucle de recargas cada 2s.
+                            var wasRunning = self.isRunning;
                             self.stopProgressCheck();
                             self.isRunning = false;
-                            self.showMessage('success', data.message);
-                            self.resetUI();
-                            setTimeout(function() { location.reload(); }, 2000);
+                            if (wasRunning) {
+                                self.showMessage('success', data.message);
+                                self.resetUI();
+                                setTimeout(function() { location.reload(); }, 2000);
+                            }
                         } else if (data.status === 'error' || data.status === 'cancelled') {
+                            var hadRun = self.isRunning;
                             self.stopProgressCheck();
                             self.isRunning = false;
-                            self.showMessage('error', data.message);
-                            self.resetUI();
+                            if (hadRun) {
+                                self.showMessage('error', data.message);
+                                self.resetUI();
+                            }
                         } else if (data.status === 'running') {
                             self.isRunning = true;
                             $('#ss-start-import').prop('disabled', true);
@@ -344,10 +363,10 @@
                     '<p><strong>Objeto a contratar:</strong> ' + e(contract.objeto_a_contratar || '-') + '</p>' +
                     '<p><strong>Objeto del proceso:</strong> ' + e(contract.objeto_del_proceso || '-') + '</p>' +
                 '</div>' +
-                (contract.url_contrato ?
+                (safeHttpUrl(contract.url_contrato) ?
                     '<div class="ss-detail-section ss-detail-full">' +
                         '<h3>Enlace SECOP</h3>' +
-                        '<a href="' + e(contract.url_contrato) + '" target="_blank" rel="noopener noreferrer" class="button button-primary">' +
+                        '<a href="' + e(safeHttpUrl(contract.url_contrato)) + '" target="_blank" rel="noopener noreferrer" class="button button-primary">' +
                             'Ver en SECOP <span class="dashicons dashicons-external"></span>' +
                         '</a>' +
                     '</div>'

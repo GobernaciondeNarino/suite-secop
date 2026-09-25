@@ -248,7 +248,7 @@ final class Visualizer
 
         // Solo permitir SELECT al inicio
         if (!preg_match('/^SELECT\s/i', $cleaned)) {
-            Logger::log('SEGURIDAD: Query personalizada rechazada — no inicia con SELECT');
+            Logger::warning('SEGURIDAD: Query personalizada rechazada — no inicia con SELECT');
             return '';
         }
 
@@ -263,26 +263,26 @@ final class Visualizer
         ];
         foreach ($forbidden as $word) {
             if (preg_match('/\b' . $word . '\b/i', $cleaned)) {
-                Logger::log("SEGURIDAD: Query personalizada rechazada — contiene '{$word}'");
+                Logger::warning("SEGURIDAD: Query personalizada rechazada — contiene '{$word}'");
                 return '';
             }
         }
 
         // Prohibir punto y coma (múltiples sentencias)
         if (str_contains($cleaned, ';')) {
-            Logger::log('SEGURIDAD: Query personalizada rechazada — contiene punto y coma');
+            Logger::warning('SEGURIDAD: Query personalizada rechazada — contiene punto y coma');
             return '';
         }
 
         // Prohibir subconsultas anidadas (máximo 1 nivel de paréntesis con SELECT)
         if (preg_match('/\(\s*SELECT\b/i', $cleaned)) {
-            Logger::log('SEGURIDAD: Query personalizada rechazada — contiene subconsulta');
+            Logger::warning('SEGURIDAD: Query personalizada rechazada — contiene subconsulta');
             return '';
         }
 
         // Prohibir acceso a tablas del sistema
         if (preg_match('/\b(information_schema|mysql|performance_schema|sys)\b/i', $cleaned)) {
-            Logger::log('SEGURIDAD: Query personalizada rechazada — acceso a tablas del sistema');
+            Logger::warning('SEGURIDAD: Query personalizada rechazada — acceso a tablas del sistema');
             return '';
         }
 
@@ -297,24 +297,34 @@ final class Visualizer
         ];
         foreach ($forbidden_tables as $pattern) {
             if (preg_match($pattern, $cleaned)) {
-                Logger::log('SEGURIDAD: Query personalizada rechazada — referencia a tabla sensible');
+                Logger::warning('SEGURIDAD: Query personalizada rechazada — referencia a tabla sensible');
                 return '';
             }
         }
 
-        // Validar que la tabla referenciada esté en la whitelist
-        $available_tables = $this->db->get_available_tables();
-        $has_valid_table  = false;
-        foreach (array_keys($available_tables) as $table) {
-            if (stripos($cleaned, $table) !== false) {
-                $has_valid_table = true;
-                break;
-            }
+        // ★ v5.16.0: validación real de tablas. El check anterior era por substring
+        // (bastaba MENCIONAR una tabla permitida en cualquier parte de la query para
+        // leer otra tabla del esquema). Ahora: (a) se rechazan los joins por coma
+        // (obligan a JOIN explícito) y (b) se extraen TODAS las tablas de FROM/JOIN
+        // y cada una debe estar en la whitelist.
+        if (preg_match('/\bFROM\s+([^()]*?)(?:\bWHERE\b|\bGROUP\b|\bORDER\b|\bLIMIT\b|\bHAVING\b|$)/is', $cleaned, $from_clause)
+            && str_contains($from_clause[1], ',')) {
+            Logger::warning('SEGURIDAD: Query personalizada rechazada — use JOIN explícito en lugar de comas en FROM');
+            return '';
         }
 
-        if (!$has_valid_table) {
-            Logger::log('SEGURIDAD: Query personalizada rechazada — tabla no autorizada');
+        if (!preg_match_all('/\b(?:FROM|JOIN)\s+`?([A-Za-z0-9_]+)`?/i', $cleaned, $matches) || empty($matches[1])) {
+            Logger::warning('SEGURIDAD: Query personalizada rechazada — sin tabla identificable');
             return '';
+        }
+
+        $available_tables = $this->db->get_available_tables();
+        $whitelist        = array_map('strtolower', array_keys($available_tables));
+        foreach ($matches[1] as $referenced_table) {
+            if (!in_array(strtolower($referenced_table), $whitelist, true)) {
+                Logger::warning("SEGURIDAD: Query personalizada rechazada — tabla no autorizada: {$referenced_table}");
+                return '';
+            }
         }
 
         return $cleaned;
@@ -500,12 +510,18 @@ final class Visualizer
         }
 
         // Rate limiting básico por IP (máx. 60 requests/minuto)
-        $ip_key = 'secop_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
-        $requests = (int) get_transient($ip_key);
-        if ($requests > 60) {
+        if (Rate_Limiter::limited('chart', 60)) {
             wp_send_json_error(['message' => 'Demasiadas solicitudes. Intente más tarde.'], 429);
         }
-        set_transient($ip_key, $requests + 1, MINUTE_IN_SECONDS);
+
+        // Solo gráficas/cards PUBLICADAS: sin esta comprobación cualquier visitante
+        // podía ejecutar la configuración de posts en borrador, privados o en papelera.
+        $chart_post = get_post($chart_id);
+        if (!$chart_post
+            || !in_array($chart_post->post_type, ['secop_chart', 'secop_dep_card'], true)
+            || $chart_post->post_status !== 'publish') {
+            wp_send_json_error(['message' => 'Configuración no encontrada']);
+        }
 
         $config = get_post_meta($chart_id, '_secop_chart_config', true);
         if (!$config) {

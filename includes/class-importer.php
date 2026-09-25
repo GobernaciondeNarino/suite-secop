@@ -164,10 +164,28 @@ final class Importer
         $fecha_inicio = get_option(SECOP_SUITE_PREFIX . 'fecha_inicio', '2016-01-01');
         $fecha_fin    = get_option(SECOP_SUITE_PREFIX . 'fecha_fin', date('Y-12-31'));
 
+        // La opción se guardó UNA sola vez al activar el plugin: un "31 de diciembre"
+        // de un año pasado congelaba las importaciones programadas (dejaban de traer
+        // contratos nuevos en silencio). Se trata como default rodante y se avanza al
+        // año en curso; una fecha de corte explícita a mitad de año no se toca.
+        if (empty($fecha_fin) || (preg_match('/^\d{4}-12-31$/', (string) $fecha_fin) && $fecha_fin < date('Y-01-01'))) {
+            $fecha_fin = date('Y-12-31');
+        }
+
         if (empty($api_url)) {
             Logger::error('URL de API no configurada');
             delete_transient(SECOP_SUITE_PREFIX . 'import_running');
             return ['success' => false, 'message' => 'URL de API no configurada'];
+        }
+
+        // Endurecimiento SSRF: la importación solo consulta la API de Datos Abiertos.
+        // El filtro permite ampliar la lista si la entidad usa otro espejo Socrata.
+        $allowed_hosts = apply_filters('secop_suite_allowed_api_hosts', ['www.datos.gov.co', 'datos.gov.co']);
+        $api_host      = wp_parse_url($api_url, PHP_URL_HOST);
+        if (!is_string($api_host) || !in_array(strtolower($api_host), $allowed_hosts, true)) {
+            Logger::error("URL de API rechazada (host no permitido): {$api_url}");
+            delete_transient(SECOP_SUITE_PREFIX . 'import_running');
+            return ['success' => false, 'message' => 'Host de la API no permitido'];
         }
 
         /**
@@ -199,13 +217,19 @@ final class Importer
         $total_imported = 0;
         $total_updated  = 0;
         $errors         = [];
+        $cancelled      = false;
+        $failed_batches = 0;
 
-        do {
+        while (true) {
             // ¿Se canceló?
             if (!get_transient(SECOP_SUITE_PREFIX . 'import_running')) {
                 Logger::warning('Importación cancelada por el usuario');
+                $cancelled = true;
                 break;
             }
+            // Renovar el candado: una importación de más de 1 hora expiraba el
+            // transient y se interpretaba como cancelación a mitad de proceso.
+            set_transient(SECOP_SUITE_PREFIX . 'import_running', true, HOUR_IN_SECONDS);
 
             $batch_number++;
             $url = add_query_arg([
@@ -220,9 +244,19 @@ final class Importer
             $items = $this->fetch_batch($url, $batch_number, $errors);
 
             if ($items === null) {
+                // Falla definitiva de este lote: probar el siguiente offset, pero con
+                // tope de fallos consecutivos para no iterar a ciegas si la API está
+                // caída. (Antes, el `continue` dentro del do…while evaluaba
+                // count(null) en la condición → TypeError fatal en PHP 8.)
+                $failed_batches++;
+                if ($failed_batches >= 3) {
+                    Logger::error('Importación abortada: 3 lotes consecutivos fallidos');
+                    break;
+                }
                 $offset += self::API_LIMIT;
                 continue;
             }
+            $failed_batches = 0;
 
             if (empty($items)) {
                 Logger::debug("Batch #{$batch_number}: sin más registros");
@@ -244,12 +278,31 @@ final class Importer
 
             $offset += self::API_LIMIT;
 
-            // Pausa entre batches para no saturar la API
-            if (count($items) === self::API_LIMIT) {
-                usleep(self::BATCH_DELAY);
+            // ¿Último lote? Pausa entre batches para no saturar la API
+            if (count($items) < self::API_LIMIT) {
+                break;
             }
+            usleep(self::BATCH_DELAY);
+        }
 
-        } while (count($items) === self::API_LIMIT);
+        // Salida por cancelación: no pisar el estado 'cancelled' que fijó
+        // ajax_cancel_import() ni reportar la importación como completada.
+        if ($cancelled) {
+            $summary = sprintf(
+                'Importación cancelada: %d insertados, %d actualizados antes de cancelar',
+                $total_imported,
+                $total_updated
+            );
+            Logger::info("=== {$summary} ===");
+            $this->invalidate_chart_cache();
+            return [
+                'success'  => false,
+                'imported' => $total_imported,
+                'updated'  => $total_updated,
+                'errors'   => $errors,
+                'message'  => $summary,
+            ];
+        }
 
         // Finalizar
         delete_transient(SECOP_SUITE_PREFIX . 'import_running');
@@ -378,12 +431,18 @@ final class Importer
     /**
      * Invalidar cache de gráficas tras importación.
      */
-    private function invalidate_chart_cache(): void
+    public function invalidate_chart_cache(): void
     {
         global $wpdb;
-        // Eliminar transients de cache de charts
+        // Eliminar transients de cache de charts Y del módulo de seguimiento
+        // (secop_trk_*): sin esto, tras importar/truncar las gráficas de
+        // Contratación seguían sirviendo datos viejos hasta 30 minutos.
         $wpdb->query(
-            "DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_secop_chart_%' OR option_name LIKE '_transient_timeout_secop_chart_%'"
+            "DELETE FROM {$wpdb->options}
+             WHERE option_name LIKE '_transient_secop_chart_%'
+                OR option_name LIKE '_transient_timeout_secop_chart_%'
+                OR option_name LIKE '_transient_secop_trk_%'
+                OR option_name LIKE '_transient_timeout_secop_trk_%'"
         );
         // Limpiar object cache
         wp_cache_delete('secop_available_tables', 'secop_suite');

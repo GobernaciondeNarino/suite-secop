@@ -1,4 +1,4 @@
-# SECOP Suite v4.0.1 - Guia de Instalacion en WordPress
+# SECOP Suite v5.16.0 - Guia de Instalacion en WordPress
 
 ## Requisitos del Sistema
 
@@ -177,7 +177,7 @@ location ~* /wp-content/plugins/secop-suite/logs/ {
 
 Tras la instalacion, verifique en **SECOP Suite > Logs** que:
 
-- La version del plugin es 4.0.1
+- La version del plugin es 5.16.0
 - La version de PHP cumple el requisito (8.1+)
 - El estado del sistema es "Listo"
 - WP-Cron esta activo (si usa actualizaciones automaticas)
@@ -191,6 +191,19 @@ Al desinstalar el plugin desde **Plugins > Desactivar > Eliminar**, se eliminan 
 - Todos los posts de graficas y su metadata
 - Los transients de progreso
 - Las tareas cron programadas
+
+## Herramientas de Desarrollo (repositorio)
+
+El repositorio incluye herramientas de asistencia con IA para el equipo de desarrollo:
+
+- **Claude Code (CLI)**: se instala en la maquina del desarrollador con `npm install -g @anthropic-ai/claude-code` (o desde https://claude.com/claude-code). Al abrir el repositorio, detecta automaticamente las skills incluidas.
+- **Skills UI/UX Pro Max** (`.claude/skills/`): 7 skills de diseno UI/UX (ui-ux-pro-max, design, design-system, ui-styling, brand, banner-design, slides) provenientes de https://github.com/nextlevelbuilder/ui-ux-pro-max-skill. Disponibles automaticamente en cualquier sesion de Claude Code sobre este repositorio.
+- **Claude Code Action** (`.github/workflows/claude.yml`): mencionar `@claude` en un issue o PR de GitHub invoca al agente para responder o implementar cambios.
+- **Security Review** (`.github/workflows/security-review.yml`): revision de seguridad automatica (https://github.com/anthropics/claude-code-security-review) sobre cada pull request, con comentarios en el propio PR.
+
+**Requisito para los workflows**: crear el secret `ANTHROPIC_API_KEY` en GitHub (Settings > Secrets and variables > Actions).
+
+Vea `AUDITORIA.md` para la lista de auditoria de codigo (hallazgos corregidos y pendientes).
 
 ## Soporte
 
