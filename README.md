@@ -69,6 +69,16 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.15.1 — Red de seguridad para instalar y actualizar sin perder datos (2026-09-28)
+
+Parte del código de la **5.15.0** (restaurada a pedido del usuario) y solo agrega protecciones; no cambia ninguna funcionalidad del plugin.
+
+- **Desinstalar ya no borra datos**: hasta la 5.15.0, «Plugins → Eliminar» ejecutaba un `uninstall.php` que borraba la tabla de contratos, todas las opciones (URL de la API, NIT, fechas…), todas las gráficas y todos los filtros. Ahora se conserva todo por defecto; solo se purga si se marca «Eliminar todos los datos al desinstalar el plugin» (Importar Datos → Configuración) y no hay otra copia instalada.
+- **Copias duplicadas**: si quedan dos carpetas del plugin, la segunda ya no provoca un error fatal; no se carga y muestra un aviso con la carpeta que sobra.
+- **ZIP con la carpeta correcta**: `bin/build-zip.sh` genera `dist/secop-suite.zip` con la carpeta raíz `secop-suite/`, así WordPress ofrece «Reemplazar el actual con el subido» en lugar de instalar un plugin nuevo (el «Download ZIP» de GitHub trae `suite-secop-<rama>/`). El workflow `release.yml` publica ese ZIP al crear un tag `vX.Y.Z`.
+- **Actualizador**: consultaba el repositorio inexistente `GobernaciondeNarino/secop-suite`; ahora usa `GobernaciondeNarino/suite-secop`, prefiere el ZIP del release y conserva la carpeta instalada.
+- Guía «Actualizar sin perder datos» en INSTALACION.md.
+
 ### v5.12.0 — Red ego (Rings) muestra toda la red al inicio + selector separado
 - La **Red ego `[secop_dep_rings]`** ahora muestra **toda la red de contratación al inicio** (todas las dependencias, contratistas, tipos y modalidades como grafo de fuerza d3 con layout acotado para responsividad con ~1700 nodos) en la **misma card**. Se **eliminó el autocentrado** en la dependencia de mayor valor.
 - Su selector de dependencia se **separó en el shortcode `[secop_dep_selector]`**, que enfoca el Rings (y demás elementos suscritos: treemap, listas) en una dependencia/modalidad/tipo mediante el **estado compartido a nivel de página** (`window.SecopCoord`). Al elegir una dependencia el Rings se redibuja como **red ego concéntrica** centrada en ella; al volver a «— Todas —» regresa a la red completa.
