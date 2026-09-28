@@ -1,4 +1,4 @@
-# SECOP Suite v5.16.0 - Guia de Instalacion en WordPress
+# SECOP Suite v5.18.0 - Guia de Instalacion en WordPress
 
 ## Requisitos del Sistema
 
@@ -14,7 +14,7 @@
 
 ### Opcion 1: Desde archivo ZIP
 
-1. Descargar el archivo ZIP del plugin desde el repositorio
+1. Descargar `secop-suite.zip` de los **Releases** del repositorio (no el "Download ZIP" de GitHub; ver "Actualizar sin perder datos")
 2. En el panel de WordPress ir a **Plugins > Añadir nuevo > Subir plugin**
 3. Seleccionar el archivo ZIP y hacer clic en **Instalar ahora**
 4. Hacer clic en **Activar plugin**
@@ -36,6 +36,79 @@ cp -r secop-suite /ruta/a/wordpress/wp-content/plugins/
 wp plugin activate secop-suite
 ```
 
+## Actualizar sin perder datos
+
+> **ADVERTENCIA:** NUNCA use **Plugins > Eliminar** sobre una copia antigua de SECOP Suite
+> de la version **5.17.0 o anterior**. El `uninstall.php` de esas versiones borra la tabla de
+> contratos, la vista de seguimiento, los respaldos, las graficas, los filtros, las cards y toda
+> la configuracion. Si tiene una copia duplicada instalada, **desactivela** y **borre su carpeta
+> por FTP/SFTP o con el administrador de archivos del hosting** (por ejemplo
+> `wp-content/plugins/suite-secop-main/`), nunca con el boton "Eliminar".
+
+La carpeta del plugin en produccion es siempre `wp-content/plugins/secop-suite/`. WordPress
+solo reemplaza la version instalada cuando el ZIP que se sube tiene esa misma carpeta raiz
+(`secop-suite/`). El boton **Code > Download ZIP** de GitHub genera una carpeta
+`suite-secop-<rama>/`, por eso WordPress la instalaba como un plugin distinto: **no use ese ZIP**.
+
+### Opcion A: subir el ZIP del release (recomendada)
+
+1. Descargar `secop-suite.zip` de la seccion **Releases** del repositorio
+   (https://github.com/GobernaciondeNarino/suite-secop/releases), no el "Download ZIP".
+2. En WordPress ir a **Plugins > Anadir nuevo > Subir plugin**, elegir `secop-suite.zip` y
+   pulsar **Instalar ahora**.
+3. WordPress detecta que el plugin ya existe y muestra la comparacion de versiones: pulsar
+   **Reemplazar el actual con el subido** (WordPress 5.5 o superior).
+4. Los datos (tabla de contratos, graficas, filtros, cards, configuracion) se conservan; al
+   entrar al administrador el plugin ejecuta las migraciones pendientes.
+
+### Opcion B: desde el escritorio de WordPress
+
+A partir de la version 5.18.0 el actualizador consulta los releases de
+`GobernaciondeNarino/suite-secop` (hasta la 5.17.0 apuntaba a un repositorio inexistente y
+nunca ofrecia actualizaciones, asi que el primer salto desde la 5.17.0 debe hacerse con la
+Opcion A). Cuando haya un release nuevo aparecera en **Escritorio > Actualizaciones** y en
+**Plugins**: pulsar **Actualizar ahora**. El actualizador descarga el asset `secop-suite.zip`,
+instala sobre la carpeta existente y reactiva el plugin solo si estaba activo.
+
+### Generar el ZIP (equipo de desarrollo)
+
+```bash
+bin/build-zip.sh
+# -> dist/secop-suite-<version>.zip y dist/secop-suite.zip (carpeta raiz: secop-suite/)
+```
+
+El script toma la version del encabezado `Version:` de `secop-suite.php`, comprueba que
+coincida con `SECOP_SUITE_VERSION` y excluye los archivos de desarrollo listados en
+`.distignore` (tests, docs, bin, .github, .claude, AUDITORIA.md, REVIEW.md...).
+
+Para publicar un release: actualizar `Version:` y `SECOP_SUITE_VERSION`, hacer commit y
+empujar un tag con la misma version:
+
+```bash
+git tag v5.18.0
+git push origin v5.18.0
+```
+
+El workflow `.github/workflows/release.yml` verifica que el tag coincida con la version,
+ejecuta las pruebas, construye el ZIP y lo publica como asset del GitHub Release.
+
+### Si ya tiene dos copias instaladas
+
+1. Identificar la copia buena (carpeta `secop-suite/`). Desde esta version, si hay dos copias,
+   el plugin muestra un aviso en el administrador indicando que carpeta esta en uso y cual sobra,
+   sin error fatal.
+2. **Desactivar** la copia sobrante en **Plugins**.
+3. **Borrar su carpeta por FTP/SFTP o administrador de archivos**. No usar "Eliminar".
+4. Si la copia buena no esta en `secop-suite/`, subir el ZIP del release (Opcion A) y
+   reemplazar.
+
+### Datos al desinstalar
+
+Desde esta version, eliminar el plugin **conserva todos los datos** por defecto. Solo se
+borran si se marca **SECOP Suite > Configuracion > Importar datos > Eliminar todos los datos
+al desinstalar el plugin**, y aun asi no se borran si existe otra copia de SECOP Suite en
+`wp-content/plugins/`.
+
 ## Configuracion Inicial
 
 ### Paso 1: Acceder al panel
@@ -44,7 +117,7 @@ Tras activar el plugin, aparecera un nuevo menu **SECOP Suite** en la barra late
 
 ### Paso 2: Configurar la API
 
-1. Ir a **SECOP Suite > Importar Datos**
+1. Ir a **SECOP Suite > Configuracion** (pestaña **Importar datos**)
 2. En la seccion "Configuracion", completar:
    - **URL de la API**: `https://www.datos.gov.co/resource/jbjy-vk9h.json` (predeterminada)
    - **NIT de la Entidad**: El NIT de su entidad (ej: `800103923`)
@@ -59,7 +132,7 @@ Tras activar el plugin, aparecera un nuevo menu **SECOP Suite** en la barra late
 
 ### Paso 4: Verificar datos
 
-1. Ir a **SECOP Suite > Ver Registros**
+1. Ir a **SECOP Suite > Configuracion** (pestaña **Registros**)
 2. Verificar que los contratos se cargaron correctamente
 3. Usar los filtros de busqueda, ano y estado para explorar los datos
 
@@ -94,7 +167,7 @@ Parametros opcionales:
 
 Para programar importaciones automaticas:
 
-1. Ir a **SECOP Suite > Importar Datos > Configuracion**
+1. Ir a **SECOP Suite > Configuracion** (pestaña **Importar datos**)
 2. Activar **Actualizacion Automatica**
 3. Seleccionar frecuencia: Diario, Semanal o Mensual
 4. Guardar configuracion
@@ -175,22 +248,26 @@ location ~* /wp-content/plugins/secop-suite/logs/ {
 
 ## Verificar Instalacion
 
-Tras la instalacion, verifique en **SECOP Suite > Logs** que:
+Tras la instalacion, verifique en **SECOP Suite > Configuracion** (pestaña **Logs**) que:
 
-- La version del plugin es 5.16.0
+- La version del plugin es 5.18.0
 - La version de PHP cumple el requisito (8.1+)
 - El estado del sistema es "Listo"
 - WP-Cron esta activo (si usa actualizaciones automaticas)
 
 ## Desinstalacion
 
-Al desinstalar el plugin desde **Plugins > Desactivar > Eliminar**, se eliminan automaticamente:
+Al desinstalar el plugin desde **Plugins > Desactivar > Eliminar** se limpian siempre la tarea
+cron de importacion y los transients de progreso, pero **se conservan todos los datos** (tabla
+de contratos, vista de seguimiento, respaldos, graficas, filtros, cards y opciones) para que
+una reinstalacion o actualizacion los reutilice.
 
-- La tabla de contratos de la base de datos
-- Todas las opciones del plugin
-- Todos los posts de graficas y su metadata
-- Los transients de progreso
-- Las tareas cron programadas
+Para borrar tambien los datos, marcar antes **Eliminar todos los datos al desinstalar el
+plugin** en **SECOP Suite > Configuracion** (pestaña **Importar datos**). Aun con esa casilla marcada, no se
+borra nada si hay otra copia de SECOP Suite instalada en `wp-content/plugins/`.
+
+> Las versiones 5.17.0 y anteriores borraban todos los datos al eliminar el plugin. Vea
+> "Actualizar sin perder datos".
 
 ## Herramientas de Desarrollo (repositorio)
 
@@ -207,6 +284,6 @@ Vea `AUDITORIA.md` para la lista de auditoria de codigo (hallazgos corregidos y 
 
 ## Soporte
 
-- **Repositorio**: https://github.com/GobernaciondeNarino/secop-suite
+- **Repositorio**: https://github.com/GobernaciondeNarino/suite-secop
 - **Autor**: Jonnathan Bucheli Galindo - Gobernacion de Narino
 - **Licencia**: GPL v2 o posterior

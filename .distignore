@@ -1,0 +1,55 @@
+# .distignore — archivos que NO entran en el ZIP instalable del plugin.
+# Lo usa bin/build-zip.sh con `rsync --exclude-from`, así que la sintaxis es la
+# de los patrones de rsync: un "/" inicial ancla a la raíz del repositorio y un
+# "/" final indica solo directorios. Las líneas que empiezan por "#" se ignoran.
+# Se CONSERVAN: README.md, INSTALACION.md, uninstall.php, index.php, assets/,
+# includes/, templates/, languages/, logs/index.php y logs/.htaccess.
+
+# Control de versiones, CI y herramientas de IA
+/.git
+/.github/
+/.gitignore
+/.gitattributes
+/.gitmodules
+/.distignore
+/.claude/
+
+# Desarrollo, pruebas, documentación interna y artefactos de compilación
+/tests/
+/docs/
+/bin/
+/dist/
+node_modules/
+/AUDITORIA.md
+/REVIEW.md
+/CLAUDE.md
+/composer.json
+/composer.lock
+/package.json
+/package-lock.json
+/phpunit.xml
+/phpunit.xml.dist
+/phpcs.xml
+/phpcs.xml.dist
+/.phpcs.xml.dist
+/phpstan.neon
+/.editorconfig
+/.env
+/.env.*
+
+# Logs generados en tiempo de ejecución (se conservan logs/index.php y logs/.htaccess)
+*.log
+
+# Archivos ocultos de editor / sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+.fleet/
+*.swp
+*.swo
+*~
+*.bak
+*.orig
+*.rej

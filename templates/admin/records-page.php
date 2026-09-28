@@ -1,38 +1,50 @@
 <?php
 /**
- * Template: Página de registros
- * 
+ * Template: pestaña «Registros» de SECOP Suite > Configuración.
+ *
+ * El .wrap y el h1 los pone config-page.php. La sub-vista (actual|consulta) va
+ * en el parámetro «vista», porque «tab» es la pestaña de Configuración.
+ *
  * @package SecopSuite
  */
+
+use SecopSuite\Plugin;
 
 if (!defined('ABSPATH')) {
     exit;
 }
 ?>
-<div class="wrap ss-admin-wrap">
-    <h1>
-        <span class="dashicons dashicons-list-view"></span>
+<div class="ss-config-records">
+    <h2 class="ss-config-section-title">
+        <span class="dashicons dashicons-list-view" aria-hidden="true"></span>
         <?php esc_html_e('Registros de Contratos', 'secop-suite'); ?>
-    </h1>
+    </h2>
 
-    <!-- Pestañas de navegación -->
-    <nav class="nav-tab-wrapper">
-        <a href="<?php echo esc_url(admin_url('admin.php?page=secop-suite-records&tab=actual')); ?>"
-           class="nav-tab<?php echo ($tab === 'actual') ? ' nav-tab-active' : ''; ?>">
-            <?php esc_html_e('Actual', 'secop-suite'); ?>
-        </a>
-        <a href="<?php echo esc_url(admin_url('admin.php?page=secop-suite-records&tab=consulta')); ?>"
-           class="nav-tab<?php echo ($tab === 'consulta') ? ' nav-tab-active' : ''; ?>">
-            <?php esc_html_e('Consulta', 'secop-suite'); ?>
-        </a>
-    </nav>
+    <!-- Sub-vistas -->
+    <ul class="subsubsub ss-config-subviews">
+        <li>
+            <a href="<?php echo esc_url(Plugin::config_url('registros', ['vista' => 'actual'])); ?>"
+               class="<?php echo ($vista === 'actual') ? 'current' : ''; ?>"<?php echo ($vista === 'actual') ? ' aria-current="page"' : ''; ?>>
+                <?php esc_html_e('Actual', 'secop-suite'); ?>
+            </a> |
+        </li>
+        <li>
+            <a href="<?php echo esc_url(Plugin::config_url('registros', ['vista' => 'consulta'])); ?>"
+               class="<?php echo ($vista === 'consulta') ? 'current' : ''; ?>"<?php echo ($vista === 'consulta') ? ' aria-current="page"' : ''; ?>>
+                <?php esc_html_e('Consulta', 'secop-suite'); ?>
+            </a>
+        </li>
+    </ul>
+    <div class="clear"></div>
 
-<?php if ($tab === 'actual'): ?>
+<?php if ($vista === 'actual'): ?>
 
     <!-- Filtros -->
     <div class="ss-filters-panel">
-        <form method="get" class="ss-filters-form">
-            <input type="hidden" name="page" value="secop-suite-records" />
+        <form method="get" action="<?php echo esc_url(admin_url('admin.php')); ?>" class="ss-filters-form">
+            <input type="hidden" name="page" value="<?php echo esc_attr(Plugin::CONFIG_PAGE); ?>" />
+            <input type="hidden" name="tab" value="registros" />
+            <input type="hidden" name="vista" value="actual" />
             
             <div class="ss-filter-group">
                 <label for="search"><?php esc_html_e('Buscar', 'secop-suite'); ?></label>
@@ -72,7 +84,7 @@ if (!defined('ABSPATH')) {
                     <span class="dashicons dashicons-search"></span>
                     <?php esc_html_e('Filtrar', 'secop-suite'); ?>
                 </button>
-                <a href="<?php echo esc_url(admin_url('admin.php?page=secop-suite-records')); ?>" class="button">
+                <a href="<?php echo esc_url(Plugin::config_url('registros', ['vista' => 'actual'])); ?>" class="button">
                     <?php esc_html_e('Limpiar', 'secop-suite'); ?>
                 </a>
             </div>
@@ -176,16 +188,13 @@ if (!defined('ABSPATH')) {
         <?php if ($total_pages > 1): ?>
             <div class="ss-pagination">
                 <?php
-                $base_url = admin_url('admin.php?page=secop-suite-records');
-                if (!empty($_GET['search'])) {
-                    $base_url = add_query_arg('search', sanitize_text_field($_GET['search']), $base_url);
+                $base_args = ['vista' => 'actual'];
+                foreach (['search', 'anno', 'estado'] as $filter_key) {
+                    if (!empty($_GET[$filter_key]) && is_string($_GET[$filter_key])) {
+                        $base_args[$filter_key] = sanitize_text_field(wp_unslash($_GET[$filter_key]));
+                    }
                 }
-                if (!empty($_GET['anno'])) {
-                    $base_url = add_query_arg('anno', sanitize_text_field($_GET['anno']), $base_url);
-                }
-                if (!empty($_GET['estado'])) {
-                    $base_url = add_query_arg('estado', sanitize_text_field($_GET['estado']), $base_url);
-                }
+                $base_url = Plugin::config_url('registros', $base_args);
 
                 echo paginate_links([
                     'base' => add_query_arg('paged', '%#%', $base_url),
@@ -206,9 +215,9 @@ if (!defined('ABSPATH')) {
         </div>
     <?php endif; ?>
 
-<?php elseif ($tab === 'consulta'): ?>
+<?php elseif ($vista === 'consulta'): ?>
 
-    <!-- Tab Consulta: datos del VIEW vista_secop_sysman, vigencia actual -->
+    <!-- Vista Consulta: datos del VIEW vista_secop_sysman, vigencia actual -->
     <div class="ss-records-summary" style="margin-top:12px;">
         <p>
             <?php
@@ -265,7 +274,7 @@ if (!defined('ABSPATH')) {
         </div>
     <?php endif; ?>
 
-<?php endif; // fin de pestañas ?>
+<?php endif; // fin de sub-vistas ?>
 </div>
 
 <!-- Modal de detalles -->

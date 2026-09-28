@@ -1,8 +1,8 @@
 <?php
 if (!defined('ABSPATH')) exit;
 ?>
-<div class="wrap ss-admin-wrap">
-    <h1><span class="dashicons dashicons-chart-area"></span> <?php esc_html_e('SECOP Suite', 'secop-suite'); ?> <span class="ss-version">v<?php echo esc_html(SECOP_SUITE_VERSION); ?></span></h1>
+<?php /* Pestaña «Importar datos» de Configuración: el .wrap y el h1 los pone config-page.php. */ ?>
+<div class="ss-config-import">
     <div class="ss-dashboard">
         <div class="ss-cards">
             <div class="ss-card"><div class="ss-card-icon"><span class="dashicons dashicons-media-text"></span></div><div class="ss-card-content"><h3><?php echo esc_html(number_format($total_records)); ?></h3><p><?php esc_html_e('Contratos Registrados', 'secop-suite'); ?></p></div></div>
@@ -45,6 +45,7 @@ if (!defined('ABSPATH')) exit;
                     <tr><th><label><?php esc_html_e('Rango de Fechas', 'secop-suite'); ?></label></th><td><div class="ss-date-range"><input type="date" name="secop_suite_fecha_inicio" value="<?php echo esc_attr(get_option('secop_suite_fecha_inicio', '2016-01-01')); ?>" /><span><?php esc_html_e('hasta', 'secop-suite'); ?></span><input type="date" name="secop_suite_fecha_fin" value="<?php echo esc_attr(get_option('secop_suite_fecha_fin', date('Y-12-31'))); ?>" /></div></td></tr>
                     <tr><th><label><?php esc_html_e('Actualización Automática', 'secop-suite'); ?></label></th><td><label class="ss-toggle"><input type="checkbox" id="ss_auto_update_enabled" name="secop_suite_auto_update_enabled" value="1" <?php checked(get_option('secop_suite_auto_update_enabled'), true); ?> /><span class="ss-toggle-slider"></span></label><span class="description"><?php esc_html_e('Habilitar actualizaciones automáticas programadas', 'secop-suite'); ?></span></td></tr>
                     <tr class="ss-auto-update-options" style="<?php echo get_option('secop_suite_auto_update_enabled') ? '' : 'display:none;'; ?>"><th><label><?php esc_html_e('Frecuencia', 'secop-suite'); ?></label></th><td><select name="secop_suite_auto_update_frequency"><option value="daily" <?php selected(get_option('secop_suite_auto_update_frequency'), 'daily'); ?>><?php esc_html_e('Diario', 'secop-suite'); ?></option><option value="weekly" <?php selected(get_option('secop_suite_auto_update_frequency'), 'weekly'); ?>><?php esc_html_e('Semanal', 'secop-suite'); ?></option><option value="monthly" <?php selected(get_option('secop_suite_auto_update_frequency'), 'monthly'); ?>><?php esc_html_e('Mensual', 'secop-suite'); ?></option></select></td></tr>
+                    <tr><th><label for="secop_suite_delete_data_on_uninstall"><?php esc_html_e('Datos al desinstalar', 'secop-suite'); ?></label></th><td><label><input type="checkbox" id="secop_suite_delete_data_on_uninstall" name="secop_suite_delete_data_on_uninstall" value="1" <?php checked(get_option('secop_suite_delete_data_on_uninstall'), true); ?> /> <?php esc_html_e('Eliminar todos los datos al desinstalar el plugin', 'secop-suite'); ?></label><p class="description"><strong><?php esc_html_e('Advertencia:', 'secop-suite'); ?></strong> <?php esc_html_e('si marca esta casilla, al usar «Eliminar» en Plugins se borrarán de forma permanente la tabla de contratos, la vista de seguimiento, los respaldos, las gráficas, los filtros, las cards y toda la configuración. Déjela desmarcada para conservar los datos al actualizar o reinstalar el plugin.', 'secop-suite'); ?></p></td></tr>
                 </table>
                 <?php submit_button(__('Guardar Configuración', 'secop-suite')); ?>
             </form>

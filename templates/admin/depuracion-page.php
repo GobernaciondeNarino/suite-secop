@@ -1,8 +1,9 @@
 <?php
 /**
- * Template: Depuración de base de datos (eliminación de registros duplicados).
+ * Template: pestaña «Depuración BD» de SECOP Suite > Configuración
+ * (eliminación de registros duplicados). El .wrap y el h1 los pone config-page.php.
  *
- * Variables inyectadas por Deduplicator::render_page():
+ * Variables inyectadas por Deduplicator::render_tab():
  * - $tables  : array  tablas depurables [tabla => label, pk, columns]
  * - $diag    : array  Deduplicator::diagnostics()
  * - $batches : array  lotes eliminados con respaldo
@@ -13,11 +14,11 @@ if (!defined('ABSPATH')) {
     exit;
 }
 ?>
-<div class="wrap ss-admin-wrap ss-dedup">
-    <h1>
+<div class="ss-dedup">
+    <h2 class="ss-config-section-title">
         <span class="dashicons dashicons-database-remove" aria-hidden="true"></span>
         <?php esc_html_e('Depuración de base de datos', 'secop-suite'); ?>
-    </h1>
+    </h2>
 
     <p class="ss-dedup-lead">
         <?php esc_html_e('Detecte y elimine registros duplicados en las tablas de contratos y de Sysman. Primero analice: verá cuántos grupos hay y una muestra de cada uno. Al eliminar se conserva siempre un registro por grupo y cada fila borrada se guarda en un respaldo que puede restaurarse.', 'secop-suite'); ?>
