@@ -1944,3 +1944,18 @@
     .ss-dedup .form-table select { width: 100%; }
     .ss-dedup-columns { grid-template-columns: 1fr; }
 }
+
+/* ==========================================================================
+   Configuración: pestañas Importar · Registros · Depuración · Logs
+   ========================================================================== */
+.ss-config .nav-tab-wrapper { margin-bottom: 20px; }
+.ss-config-section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 12px;
+}
+.ss-config-section-title .dashicons { font-size: 22px; width: 22px; height: 22px; }
+.ss-config-subviews { margin: 0 0 12px; }

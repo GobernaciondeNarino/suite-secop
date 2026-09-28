@@ -1,8 +1,8 @@
 <?php
 if (!defined('ABSPATH')) exit;
 ?>
-<div class="wrap ss-admin-wrap">
-    <h1><span class="dashicons dashicons-chart-area"></span> <?php esc_html_e('SECOP Suite', 'secop-suite'); ?> <span class="ss-version">v<?php echo esc_html(SECOP_SUITE_VERSION); ?></span></h1>
+<?php /* Pestaña «Importar datos» de Configuración: el .wrap y el h1 los pone config-page.php. */ ?>
+<div class="ss-config-import">
     <div class="ss-dashboard">
         <div class="ss-cards">
             <div class="ss-card"><div class="ss-card-icon"><span class="dashicons dashicons-media-text"></span></div><div class="ss-card-content"><h3><?php echo esc_html(number_format($total_records)); ?></h3><p><?php esc_html_e('Contratos Registrados', 'secop-suite'); ?></p></div></div>
