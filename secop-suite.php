@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: SECOP Suite
- * Plugin URI: https://github.com/GobernaciondeNarino/secop-suite
+ * Plugin URI: https://github.com/GobernaciondeNarino/suite-secop
  * Description: Plugin integral para la importación, almacenamiento y visualización interactiva de datos contractuales del SECOP (Sistema Electrónico de Contratación Pública) de Colombia. Combina importación automatizada desde datos.gov.co con gráficas D3plus configurables mediante shortcodes.
  * Version: 5.17.0
  * Requires at least: 6.0
@@ -22,6 +22,52 @@ namespace SecopSuite;
 
 if (!defined('ABSPATH')) {
     exit;
+}
+
+// ─── Guarda contra copias duplicadas ───────────────────────────
+// Si otra carpeta del plugin (p. ej. «suite-secop-main» subida desde el
+// «Download ZIP» de GitHub) ya se cargó en esta petición, esta copia NO carga
+// nada más: así se evita el error fatal «Cannot declare class SecopSuite\Plugin»
+// y que ambas copias registren hooks a la vez. Solo se muestra un aviso en el
+// administrador indicando qué carpeta está activa y cuál sobra.
+// Un `return` a nivel de archivo detiene la inclusión de este archivo; las
+// declaraciones de clase posteriores no llegan a ejecutarse. (PHP puede
+// declarar Plugin de antemano al compilar ESTE archivo, por eso solo cuenta
+// como duplicado si la clase existente viene de otro archivo.)
+if (defined('SECOP_SUITE_VERSION')
+    || (class_exists(__NAMESPACE__ . '\\Plugin', false)
+        && (new \ReflectionClass(__NAMESPACE__ . '\\Plugin'))->getFileName() !== __FILE__)) {
+    $secop_suite_activa = defined('SECOP_SUITE_BASENAME') ? dirname(\SECOP_SUITE_BASENAME) : '';
+    $secop_suite_sobra  = function_exists('plugin_basename') ? dirname(plugin_basename(__FILE__)) : basename(__DIR__);
+
+    // Misma carpeta incluida de nuevo (p. ej. activate_plugin() durante una
+    // actualización en la misma petición): no es un duplicado, salir en silencio.
+    if ($secop_suite_activa !== $secop_suite_sobra && function_exists('add_action')) {
+        $secop_suite_aviso = static function () use ($secop_suite_activa, $secop_suite_sobra): void {
+            if (!function_exists('current_user_can') || !current_user_can('activate_plugins')) {
+                return;
+            }
+            $version_activa = defined('SECOP_SUITE_VERSION') ? (string) \SECOP_SUITE_VERSION : '?';
+            echo '<div class="notice notice-error"><p><strong>'
+               . esc_html__('SECOP Suite: hay dos copias del plugin instaladas.', 'secop-suite')
+               . '</strong> '
+               . sprintf(
+                   /* translators: 1: carpeta activa, 2: versión activa, 3: carpeta duplicada */
+                   esc_html__('Se está usando la carpeta %1$s (v%2$s). La carpeta %3$s sobra y no se cargó.', 'secop-suite'),
+                   '<code>wp-content/plugins/' . esc_html($secop_suite_activa !== '' ? $secop_suite_activa : '?') . '/</code>',
+                   esc_html($version_activa),
+                   '<code>wp-content/plugins/' . esc_html($secop_suite_sobra) . '/</code>'
+               )
+               . '</p><p>'
+               . esc_html__('Desactive la copia sobrante y borre su carpeta por FTP o con el administrador de archivos del hosting. No use «Eliminar» en una copia de la versión 5.17.0 o anterior: su desinstalador borra los datos del plugin.', 'secop-suite')
+               . '</p></div>';
+        };
+        add_action('admin_notices', $secop_suite_aviso);
+        add_action('network_admin_notices', $secop_suite_aviso);
+        unset($secop_suite_aviso);
+    }
+    unset($secop_suite_activa, $secop_suite_sobra);
+    return;
 }
 
 // ─── Constantes ────────────────────────────────────────────────
@@ -318,6 +364,7 @@ final class Plugin
         foreach ($fields as $key => $args) {
             register_setting('secop_suite_settings', SECOP_SUITE_PREFIX . $key, $args);
         }
+        register_setting('secop_suite_settings', 'secop_suite_delete_data_on_uninstall', ['type' => 'boolean', 'default' => false, 'sanitize_callback' => 'rest_sanitize_boolean']);
     }
 
     // ── Assets de administración ───────────────────────────────
