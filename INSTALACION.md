@@ -1,4 +1,4 @@
-# SECOP Suite v5.15.1 - Guia de Instalacion en WordPress
+# SECOP Suite v5.19.0 - Guia de Instalacion en WordPress
 
 ## Requisitos del Sistema
 

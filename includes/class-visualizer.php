@@ -42,6 +42,7 @@ final class Visualizer
         add_action('init', [$this, 'register_post_type']);
         add_action('add_meta_boxes', [$this, 'add_meta_boxes']);
         add_action('save_post_' . self::POST_TYPE, [$this, 'save_chart_meta'], 10, 2);
+        add_action('admin_notices', [$this, 'custom_query_notice']);
 
         // Assets
         add_action('wp_enqueue_scripts', [$this, 'enqueue_frontend_assets']);
@@ -188,7 +189,40 @@ final class Visualizer
                 : '',
         ];
 
+        // Una consulta enviada que no pasa la validación NUNCA borra la guardada:
+        // se conserva la anterior y se avisa en pantalla (antes se guardaba '' en
+        // silencio y la gráfica quedaba vacía al pulsar «Actualizar»).
+        $submitted = isset($_POST['ss_use_custom_query']) ? trim((string) wp_unslash($_POST['ss_custom_query'] ?? '')) : '';
+        if ($submitted !== '' && $config['custom_query'] === '' && current_user_can('manage_options')) {
+            $previous = get_post_meta($post_id, '_secop_chart_config', true);
+            // update_post_meta() quita barras invertidas: se vuelven a poner para que la
+            // consulta conservada quede idéntica a la guardada.
+            $config['custom_query'] = is_array($previous) ? wp_slash((string) ($previous['custom_query'] ?? '')) : '';
+            set_transient('secop_chart_query_notice_' . get_current_user_id(), [
+                'post'   => $post_id,
+                'reason' => $this->last_query_error,
+                'kept'   => $config['custom_query'] !== '',
+            ], 5 * MINUTE_IN_SECONDS);
+        }
+
         update_post_meta($post_id, '_secop_chart_config', $config);
+    }
+
+    /** Aviso tras guardar una gráfica cuya consulta personalizada fue rechazada. */
+    public function custom_query_notice(): void
+    {
+        $key    = 'secop_chart_query_notice_' . get_current_user_id();
+        $notice = get_transient($key);
+        if (!is_array($notice)) {
+            return;
+        }
+        delete_transient($key);
+        $msg = $notice['kept']
+            ? __('La consulta personalizada NO se guardó porque no pasó la validación de seguridad; se conservó la consulta anterior.', 'secop-suite')
+            : __('La consulta personalizada NO se guardó porque no pasó la validación de seguridad.', 'secop-suite');
+        echo '<div class="notice notice-error"><p><strong>' . esc_html($msg) . '</strong> '
+           . esc_html(sprintf(__('Motivo: %s.', 'secop-suite'), (string) $notice['reason']))
+           . '</p></div>';
     }
 
     private function sanitize_filters(array $filters): array
@@ -231,6 +265,53 @@ final class Visualizer
      * Se eliminan comentarios SQL, se normalizan espacios, y se aplica
      * una lista extensa de palabras y funciones prohibidas.
      */
+    /** Motivo del último rechazo de sanitize_custom_query() (para avisar al guardar). */
+    private string $last_query_error = '';
+
+    private function reject_query(string $reason): string
+    {
+        $this->last_query_error = $reason;
+        Logger::warning('SEGURIDAD: Query personalizada rechazada — ' . $reason);
+        return '';
+    }
+
+    /**
+     * Tablas referenciadas por una consulta SELECT (sin comentarios ni subconsultas).
+     * Considera solo el nivel superior: se vacían los literales de texto y el
+     * contenido entre paréntesis antes de buscar FROM y JOIN.
+     *
+     * @return array<int,string>
+     */
+    public static function referenced_tables(string $sql): array
+    {
+        $s = preg_replace("/'(?:[^'\\\\]|\\\\.)*'/s", "''", $sql);
+        $s = preg_replace('/"(?:[^"\\\\]|\\\\.)*"/s', '""', (string) $s);
+        do {
+            $s = preg_replace('/\([^()]*\)/', ' ', (string) $s, -1, $count);
+        } while ($count > 0);
+        $s = ' ' . preg_replace('/\s+/', ' ', (string) $s) . ' ';
+
+        $ident  = '`?([A-Za-z0-9_$.]+)`?';
+        $tables = [];
+
+        $stop = '(?=\b(?:WHERE|GROUP|ORDER|LIMIT|HAVING|UNION|WINDOW|FOR|ON|USING|NATURAL|INNER|CROSS|STRAIGHT_JOIN|LEFT|RIGHT|JOIN)\b|$)';
+        if (preg_match_all('/\bFROM\s+(.*?)' . $stop . '/i', $s, $froms)) {
+            foreach ($froms[1] as $list) {
+                foreach (explode(',', $list) as $item) {
+                    if (preg_match('/^\s*' . $ident . '/', $item, $m)) {
+                        $tables[] = $m[1];
+                    }
+                }
+            }
+        }
+        if (preg_match_all('/\bJOIN\s+' . $ident . '/i', $s, $joins)) {
+            foreach ($joins[1] as $t) {
+                $tables[] = $t;
+            }
+        }
+        return array_values(array_unique($tables));
+    }
+
     private function sanitize_custom_query(string $query): string
     {
         $trimmed = trim($query);
@@ -248,8 +329,7 @@ final class Visualizer
 
         // Solo permitir SELECT al inicio
         if (!preg_match('/^SELECT\s/i', $cleaned)) {
-            Logger::warning('SEGURIDAD: Query personalizada rechazada — no inicia con SELECT');
-            return '';
+            return $this->reject_query('no inicia con SELECT');
         }
 
         // Prohibir palabras y funciones peligrosas
@@ -263,27 +343,23 @@ final class Visualizer
         ];
         foreach ($forbidden as $word) {
             if (preg_match('/\b' . $word . '\b/i', $cleaned)) {
-                Logger::warning("SEGURIDAD: Query personalizada rechazada — contiene '{$word}'");
-                return '';
+                return $this->reject_query("contiene '{$word}'");
             }
         }
 
         // Prohibir punto y coma (múltiples sentencias)
         if (str_contains($cleaned, ';')) {
-            Logger::warning('SEGURIDAD: Query personalizada rechazada — contiene punto y coma');
-            return '';
+            return $this->reject_query('contiene punto y coma');
         }
 
         // Prohibir subconsultas anidadas (máximo 1 nivel de paréntesis con SELECT)
         if (preg_match('/\(\s*SELECT\b/i', $cleaned)) {
-            Logger::warning('SEGURIDAD: Query personalizada rechazada — contiene subconsulta');
-            return '';
+            return $this->reject_query('contiene subconsulta');
         }
 
         // Prohibir acceso a tablas del sistema
         if (preg_match('/\b(information_schema|mysql|performance_schema|sys)\b/i', $cleaned)) {
-            Logger::warning('SEGURIDAD: Query personalizada rechazada — acceso a tablas del sistema');
-            return '';
+            return $this->reject_query('acceso a tablas del sistema');
         }
 
         // ★ SEGURIDAD (C1): bloquear tablas sensibles de WordPress sin importar el
@@ -297,33 +373,23 @@ final class Visualizer
         ];
         foreach ($forbidden_tables as $pattern) {
             if (preg_match($pattern, $cleaned)) {
-                Logger::warning('SEGURIDAD: Query personalizada rechazada — referencia a tabla sensible');
-                return '';
+                return $this->reject_query('referencia a tabla sensible');
             }
         }
 
-        // ★ v5.16.0: validación real de tablas. El check anterior era por substring
-        // (bastaba MENCIONAR una tabla permitida en cualquier parte de la query para
-        // leer otra tabla del esquema). Ahora: (a) se rechazan los joins por coma
-        // (obligan a JOIN explícito) y (b) se extraen TODAS las tablas de FROM/JOIN
-        // y cada una debe estar en la whitelist.
-        if (preg_match('/\bFROM\s+([^()]*?)(?:\bWHERE\b|\bGROUP\b|\bORDER\b|\bLIMIT\b|\bHAVING\b|$)/is', $cleaned, $from_clause)
-            && str_contains($from_clause[1], ',')) {
-            Logger::warning('SEGURIDAD: Query personalizada rechazada — use JOIN explícito en lugar de comas en FROM');
-            return '';
+        // ★ Validación real de tablas: se extraen TODAS las tablas de FROM (incluidas
+        // las listas con coma, «FROM a, b») y de los JOIN, a nivel superior (los FROM
+        // dentro de funciones como EXTRACT(YEAR FROM …) no cuentan), y cada una debe
+        // estar en la lista blanca. Antes bastaba con MENCIONAR una tabla permitida.
+        $tables = self::referenced_tables(wp_unslash($cleaned));
+        if (!$tables) {
+            return $this->reject_query('sin tabla identificable en FROM/JOIN');
         }
 
-        if (!preg_match_all('/\b(?:FROM|JOIN)\s+`?([A-Za-z0-9_]+)`?/i', $cleaned, $matches) || empty($matches[1])) {
-            Logger::warning('SEGURIDAD: Query personalizada rechazada — sin tabla identificable');
-            return '';
-        }
-
-        $available_tables = $this->db->get_available_tables();
-        $whitelist        = array_map('strtolower', array_keys($available_tables));
-        foreach ($matches[1] as $referenced_table) {
+        $whitelist = array_map('strtolower', array_keys($this->db->get_available_tables()));
+        foreach ($tables as $referenced_table) {
             if (!in_array(strtolower($referenced_table), $whitelist, true)) {
-                Logger::warning("SEGURIDAD: Query personalizada rechazada — tabla no autorizada: {$referenced_table}");
-                return '';
+                return $this->reject_query("tabla no autorizada: {$referenced_table}");
             }
         }
 
@@ -494,6 +560,26 @@ final class Visualizer
     }
 
     // ── AJAX ───────────────────────────────────────────────────
+    /**
+     * Configuración de una gráfica que puede servirse públicamente.
+     *
+     * Solo posts de tipo gráfica o card (no cualquier ID que tenga la meta) y
+     * nunca los de la papelera o los borradores automáticos. Las gráficas en
+     * borrador, pendientes o privadas se siguen sirviendo, como en la 5.15.0:
+     * se usan en páginas publicadas y bloquearlas vaciaba esas gráficas.
+     */
+    public static function servable_chart_config(int $chart_id): array|false
+    {
+        $post = $chart_id > 0 ? get_post($chart_id) : null;
+        if (!$post
+            || !in_array($post->post_type, ['secop_chart', 'secop_dep_card'], true)
+            || in_array($post->post_status, ['trash', 'auto-draft', 'inherit'], true)) {
+            return false;
+        }
+        $config = get_post_meta($chart_id, '_secop_chart_config', true);
+        return is_array($config) && $config ? $config : false;
+    }
+
     public function ajax_get_chart_data(): void
     {
         $chart_id = intval($_POST['chart_id'] ?? 0);
@@ -514,16 +600,7 @@ final class Visualizer
             wp_send_json_error(['message' => 'Demasiadas solicitudes. Intente más tarde.'], 429);
         }
 
-        // Solo gráficas/cards PUBLICADAS: sin esta comprobación cualquier visitante
-        // podía ejecutar la configuración de posts en borrador, privados o en papelera.
-        $chart_post = get_post($chart_id);
-        if (!$chart_post
-            || !in_array($chart_post->post_type, ['secop_chart', 'secop_dep_card'], true)
-            || $chart_post->post_status !== 'publish') {
-            wp_send_json_error(['message' => 'Configuración no encontrada']);
-        }
-
-        $config = get_post_meta($chart_id, '_secop_chart_config', true);
+        $config = self::servable_chart_config($chart_id);
         if (!$config) {
             wp_send_json_error(['message' => 'Configuración no encontrada']);
         }

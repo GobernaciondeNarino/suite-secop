@@ -73,7 +73,7 @@ if (!defined('ABSPATH')) {
                 <td><code><?php echo esc_html(rest_url('secop-suite/v1/consulta')); ?></code></td>
                 <td>JSON</td>
                 <td><?php esc_html_e(
-                    'Ejecución presupuestal de la vigencia actual, paginada y SIN duplicados. Parámetros: page (default 1), per_page (default 100, máx 1000), agrupar (contrato = una fila por contrato, predeterminado | detalle = una fila por asiento presupuestal distinto). La respuesta incluye total y total_pages. Acceso público.',
+                    'Ejecución presupuestal de la vigencia actual, paginada y SIN duplicados. Parámetros: page (default 1), per_page (default 100, máx 1000), agrupar (asiento = una fila por asiento distinto con el formato habitual, predeterminado | contrato = una fila por contrato | detalle = todas las columnas por asiento). La respuesta incluye total y total_pages. Acceso público.',
                     'secop-suite'
                 ); ?></td>
             </tr>
@@ -81,7 +81,7 @@ if (!defined('ABSPATH')) {
                 <td><code><?php echo esc_html(rest_url('secop-suite/v1/consulta/csv')); ?></code></td>
                 <td>CSV</td>
                 <td><?php esc_html_e(
-                    'Descarga CSV completa de la vigencia actual sin duplicados (acepta agrupar=contrato|detalle y los mismos filtros). Ordenada por valor efectivo descendente. Acceso público.',
+                    'Descarga CSV completa de la vigencia actual sin filas repetidas (acepta agrupar=contrato|detalle y los mismos filtros). Por defecto, todas las columnas publicables por asiento, ordenadas por valor del contrato descendente. Acceso público.',
                     'secop-suite'
                 ); ?></td>
             </tr>
@@ -89,7 +89,7 @@ if (!defined('ABSPATH')) {
                 <td><code><?php echo esc_html(rest_url('secop-suite/v1/consulta/txt')); ?></code></td>
                 <td>TXT</td>
                 <td><?php esc_html_e(
-                    'Descarga TXT ancho fijo de la vigencia actual sin duplicados (acepta agrupar=contrato|detalle y los mismos filtros). Acceso público.',
+                    'Descarga TXT ancho fijo de la vigencia actual sin filas repetidas (acepta agrupar=contrato|detalle y los mismos filtros). Acceso público.',
                     'secop-suite'
                 ); ?></td>
             </tr>
@@ -140,7 +140,7 @@ if (!defined('ABSPATH')) {
         <li><code>?columna_max=valor</code> — <?php esc_html_e('menor o igual (≤), para números/fechas.', 'secop-suite'); ?></li>
         <li><code>order_by=columna&order=asc|desc</code> — <?php esc_html_e('orden por columna y dirección.', 'secop-suite'); ?></li>
         <li><code>page</code>, <code>per_page</code> — <?php esc_html_e('paginación (JSON).', 'secop-suite'); ?></li>
-        <li><code>agrupar=contrato|detalle</code> — <?php esc_html_e('solo /consulta: una fila por contrato (predeterminado) o una fila por asiento presupuestal distinto.', 'secop-suite'); ?></li>
+        <li><code>agrupar=asiento|contrato|detalle</code> — <?php esc_html_e('solo /consulta: una fila por asiento distinto con el formato habitual (predeterminado), una fila por contrato, o todas las columnas por asiento.', 'secop-suite'); ?></li>
     </ul>
     <table class="widefat striped">
         <thead>
@@ -183,7 +183,7 @@ if (!defined('ABSPATH')) {
 
     <h2><?php esc_html_e('Deduplicación de las APIs', 'secop-suite'); ?></h2>
     <p><?php esc_html_e(
-        'La vista vista_secop_sysman cruza cada contrato con todos sus asientos presupuestales, por lo que un contrato con varios asientos aparece varias veces en la vista. Desde la versión 5.17.0 los endpoints /consulta eliminan primero las filas repetidas (DISTINCT, sin los identificadores internos de cada tabla) y, por defecto, entregan una sola fila por contrato con los valores presupuestales sumados. Los endpoints /contracts y /export leen la tabla de contratos, cuyo índice único impide que un número de contrato se repita. Para limpiar duplicados en la propia base de datos use SECOP Suite > Configuración > Depuración BD.',
+        'La vista vista_secop_sysman cruza cada contrato con todos sus asientos presupuestales. Los endpoints /consulta eliminan siempre las filas repetidas (DISTINCT sin los identificadores internos de cada tabla), por ejemplo asientos reimportados en Sysman, y conservan por defecto el formato habitual: una fila por asiento distinto. Con agrupar=contrato se obtiene una sola fila por contrato con los valores presupuestales sumados. Los endpoints /contracts y /export leen la tabla de contratos, cuyo índice único impide que un número de contrato se repita. Para limpiar duplicados en la propia base de datos use SECOP Suite > Configuración > Depuración BD.',
         'secop-suite'
     ); ?></p>
 

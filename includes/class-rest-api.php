@@ -103,8 +103,8 @@ final class Rest_Api
         ]);
 
         // ── Consulta (Datos Abiertos — vigencia actual) ────────
-        // agrupar=contrato (predeterminado, una fila por contrato) | detalle.
-        $agrupar_arg = ['default' => 'contrato', 'sanitize_callback' => 'sanitize_key'];
+        // agrupar=asiento (predeterminado, formato 5.15.0) | contrato | detalle.
+        $agrupar_arg = ['default' => 'asiento', 'sanitize_callback' => 'sanitize_key'];
         register_rest_route(self::NAMESPACE, '/consulta', [
             'methods'             => 'GET',
             'callback'            => [$this, 'get_consulta'],
@@ -266,23 +266,6 @@ final class Rest_Api
 
     // ── Datos de gráfica ───────────────────────────────────────
 
-    /**
-     * Devuelve la config de la gráfica SOLO si el post es una gráfica/card
-     * publicada. Sin esto, cualquier visitante podía ejecutar configuraciones
-     * de posts en borrador, privados o en papelera.
-     */
-    private function published_chart_config(int $chart_id): array|false
-    {
-        $post = get_post($chart_id);
-        if (!$post
-            || !in_array($post->post_type, ['secop_chart', 'secop_dep_card'], true)
-            || $post->post_status !== 'publish') {
-            return false;
-        }
-        $config = get_post_meta($chart_id, '_secop_chart_config', true);
-        return is_array($config) && $config ? $config : false;
-    }
-
     public function get_chart_data(\WP_REST_Request $request): \WP_REST_Response
     {
         // FIX I2: rate limit por IP (reutiliza consulta_rate_limited — máx. 30 req/min)
@@ -291,7 +274,7 @@ final class Rest_Api
         }
 
         $chart_id = (int) $request->get_param('id');
-        $config   = $this->published_chart_config($chart_id);
+        $config   = Visualizer::servable_chart_config($chart_id);
 
         if (!$config) {
             return new \WP_REST_Response(['error' => 'Chart not found'], 404);
@@ -315,7 +298,7 @@ final class Rest_Api
         }
 
         $chart_id = (int) $request->get_param('id');
-        $config   = $this->published_chart_config($chart_id);
+        $config   = Visualizer::servable_chart_config($chart_id);
 
         if (!$config) {
             status_header(404);
@@ -560,7 +543,7 @@ final class Rest_Api
      *
      * @return array{select:string,count:string,columns:array<int,string>,order:string,params:array,grouping:string,vigencia:int}|null
      */
-    private function consulta_query(\WP_REST_Request $request, string $default_order): ?array
+    private function consulta_query(\WP_REST_Request $request, bool $download): ?array
     {
         if (!$this->db->view_exists()) {
             return null;
@@ -569,20 +552,30 @@ final class Rest_Api
         $view     = $this->db->get_view_name();
         $columns  = $this->db->get_table_columns($view);
         $grouping = (string) $request->get_param('agrupar');
-        $grouping = in_array($grouping, Open_Data::GROUPINGS, true) ? $grouping : 'contrato';
+        $grouping = in_array($grouping, Open_Data::GROUPINGS, true) ? $grouping : 'asiento';
         $vigencia = (int) current_time('Y');
 
-        // v5.11.0: filtros por cualquier columna del VIEW (validados, sin PII). En la
-        // agrupación por contrato se aplican a las filas de detalle antes de agrupar.
+        // Formato de la 5.15.0 por defecto: el JSON publica 10 campos por asiento y
+        // las descargas CSV/TXT todas las columnas publicables del asiento.
+        $sql_grouping = ($grouping === 'asiento' && $download) ? 'detalle' : $grouping;
+        $default_col  = match ($sql_grouping) {
+            'contrato' => 'valor_efectivo',
+            'detalle'  => $download ? 'valor_contrato' : 'valordebito',
+            default    => 'valordebito',
+        };
+
+        // v5.11.0: filtros por cualquier columna del VIEW (validados, sin PII). Se
+        // aplican a las filas de detalle antes de agrupar o proyectar.
         [$filters, $fvals] = $this->url_field_filters($request, $view, self::PII_COLS);
 
-        $sql   = Open_Data::consulta_sql($view, $columns, $grouping, $filters);
+        $sql   = Open_Data::consulta_sql($view, $columns, $sql_grouping, $filters);
         $order = Open_Data::consulta_order(
             $sql['columns'],
-            $grouping,
+            $sql_grouping,
             (string) $request->get_param('order_by'),
             (string) ($request->get_param('order') ?: 'DESC'),
-            $grouping === 'detalle' ? 'valordebito' : $default_order
+            $default_col,
+            $sql['ties'] ?? []
         );
 
         // Las listas de dependencias/rubros usan GROUP_CONCAT (1024 bytes por defecto).
@@ -598,8 +591,10 @@ final class Rest_Api
     }
 
     /**
-     * JSON paginado de la vigencia actual SIN duplicados. Por defecto una fila por
-     * contrato (agrupar=contrato); agrupar=detalle entrega un asiento distinto por fila.
+     * JSON paginado de la vigencia actual SIN duplicados. Por defecto (agrupar=asiento)
+     * conserva el formato de la 5.15.0: una fila por asiento distinto con sus 10
+     * campos; agrupar=contrato entrega una fila por contrato y agrupar=detalle todas
+     * las columnas publicables.
      */
     public function get_consulta(\WP_REST_Request $request): \WP_REST_Response
     {
@@ -619,7 +614,7 @@ final class Rest_Api
             return new \WP_REST_Response($cached);
         }
 
-        $q = $this->consulta_query($request, 'valor_efectivo');
+        $q = $this->consulta_query($request, false);
         if ($q === null) {
             return new \WP_REST_Response(['message' => 'La vista de consulta no está disponible'], 503);
         }
@@ -664,7 +659,7 @@ final class Rest_Api
             exit;
         }
 
-        $q = $this->consulta_query($request, 'valor_efectivo');
+        $q = $this->consulta_query($request, true);
         if ($q === null) {
             status_header(404);
             echo 'No hay datos para exportar';
@@ -672,7 +667,7 @@ final class Rest_Api
         }
 
         global $wpdb;
-        $suffix = $q['grouping'] === 'detalle' ? '-detalle' : '';
+        $suffix = $q['grouping'] === 'asiento' ? '' : '-' . $q['grouping'];
         $this->stream_download(
             $format,
             'secop-consulta-' . $q['vigencia'] . $suffix,

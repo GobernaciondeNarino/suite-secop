@@ -36,7 +36,12 @@ final class Open_Data
     public const SURROGATE_COLS = ['idsecop', 'idauxiliar', 'idplan'];
 
     /** Agrupaciones admitidas por /consulta. */
-    public const GROUPINGS = ['contrato', 'detalle'];
+    /**
+     * Agrupaciones admitidas por /consulta. «asiento» es la predeterminada y
+     * conserva el formato de la 5.15.0 (mismos campos, una fila por asiento),
+     * pero sin filas repetidas.
+     */
+    public const GROUPINGS = ['asiento', 'contrato', 'detalle'];
 
     private Database $db;
 
@@ -50,7 +55,7 @@ final class Open_Data
     // ── Esquema de /consulta agrupado por contrato ─────────────
 
     /**
-     * Campos de /consulta con agrupar=contrato (uno por contrato).
+     * Campos de /consulta con agrupar=contrato (una fila por contrato).
      * Cada campo: sql (expresión sobre la tabla derivada `d`), requires (columnas
      * del VIEW que necesita), type (tipo publicado) y desc.
      *
@@ -91,6 +96,28 @@ final class Open_Data
     }
 
     /**
+     * Campos de /consulta con agrupar=asiento (predeterminado): los mismos 10
+     * campos y etiquetas que publicaba la 5.15.0, uno por asiento distinto.
+     *
+     * @return array<string,array{sql:string,requires:array<int,string>,type:string,desc:string}>
+     */
+    public static function classic_fields(): array
+    {
+        return [
+            'nombredependencia'   => ['sql' => "COALESCE(NULLIF(d.`nombredependencia`, ''), 'No Registra SYSMAN')", 'requires' => ['nombredependencia'], 'type' => 'texto', 'desc' => __('Dependencia que ejecuta el asiento según Sysman; "No Registra SYSMAN" si el contrato no cruza con la ejecución presupuestal.', 'secop-suite')],
+            'numero_de_proceso'   => ['sql' => 'd.`numero_de_proceso`', 'requires' => ['numero_de_proceso'], 'type' => 'texto', 'desc' => __('Número del proceso de contratación en SECOP.', 'secop-suite')],
+            'numero_del_contrato' => ['sql' => 'd.`numero_del_contrato`', 'requires' => ['numero_del_contrato'], 'type' => 'texto', 'desc' => __('Número del contrato en SECOP.', 'secop-suite')],
+            'nombretercero'       => ['sql' => "COALESCE(NULLIF(d.`nombretercero`, ''), NULLIF(d.`nom_raz_social_contratista`, ''), 'No Registra SYSMAN')", 'requires' => ['nombretercero', 'nom_raz_social_contratista'], 'type' => 'texto', 'desc' => __('Tercero (contratista) registrado en Sysman; si no hay cruce, el contratista del SECOP.', 'secop-suite')],
+            'valordebito'         => ['sql' => 'd.`valordebito`', 'requires' => ['valordebito'], 'type' => 'decimal', 'desc' => __('Valor débito (ejecutado) del asiento presupuestal.', 'secop-suite')],
+            'valorcredito'        => ['sql' => 'd.`valorcredito`', 'requires' => ['valorcredito'], 'type' => 'decimal', 'desc' => __('Valor crédito del asiento presupuestal.', 'secop-suite')],
+            'saldoporejecutaresp' => ['sql' => 'd.`saldoporejecutaresp`', 'requires' => ['saldoporejecutaresp'], 'type' => 'decimal', 'desc' => __('Saldo por ejecutar del asiento presupuestal.', 'secop-suite')],
+            'valor_contrato'      => ['sql' => 'd.`valor_contrato`', 'requires' => ['valor_contrato'], 'type' => 'decimal', 'desc' => __('Valor total del contrato según SECOP (se repite en cada asiento del contrato: no lo sume por filas).', 'secop-suite')],
+            'anio'                => ['sql' => 'YEAR(d.`fecha_de_firma_del_contrato`)', 'requires' => ['fecha_de_firma_del_contrato'], 'type' => 'entero', 'desc' => __('Vigencia: año de firma del contrato.', 'secop-suite')],
+            'mes'                 => ['sql' => 'd.`mes_asiento`', 'requires' => ['mes_asiento'], 'type' => 'entero', 'desc' => __('Mes (1-12) del asiento presupuestal en Sysman.', 'secop-suite')],
+        ];
+    }
+
+    /**
      * Campos de contrato disponibles según las columnas reales del VIEW.
      *
      * @param array<string,string> $view_columns [columna => tipo MySQL]
@@ -98,8 +125,14 @@ final class Open_Data
      */
     public static function available_contract_fields(array $view_columns): array
     {
+        return self::available_fields(self::contract_fields(), $view_columns);
+    }
+
+    /** Filtra los campos cuyas columnas requeridas existen en el VIEW. */
+    public static function available_fields(array $fields, array $view_columns): array
+    {
         return array_filter(
-            self::contract_fields(),
+            $fields,
             static function (array $f) use ($view_columns): bool {
                 foreach ($f['requires'] as $col) {
                     if (!isset($view_columns[$col])) {
@@ -131,13 +164,14 @@ final class Open_Data
      * SQL (sin ORDER/LIMIT) de /consulta para la agrupación indicada.
      *
      * Parte de un conjunto DISTINCT de filas de detalle de la vigencia (sin ids
-     * internos ni PII); con agrupar=contrato se agrega una fila por contrato.
+     * internos ni PII); «asiento» proyecta los campos clásicos, «contrato» agrega
+     * una fila por contrato y «detalle» publica todas las columnas.
      * Los fragmentos $filters ya vienen validados (columnas reales) y usan
      * placeholders cuyos valores aporta el llamador.
      *
      * @param array<string,string> $view_columns
      * @param array<int,string>    $filters Fragmentos WHERE con placeholders.
-     * @return array{select:string,count:string,columns:array<int,string>}
+     * @return array{select:string,count:string,columns:array<int,string>,ties?:array<int,string>}
      */
     public static function consulta_sql(string $view, array $view_columns, string $grouping, array $filters): array
     {
@@ -154,6 +188,22 @@ final class Open_Data
                 'select'  => $inner,
                 'count'   => "SELECT COUNT(*) FROM ({$inner}) d",
                 'columns' => $detail,
+            ];
+        }
+
+        if ($grouping === 'asiento') {
+            $fields = self::available_fields(self::classic_fields(), $view_columns);
+            $parts  = [];
+            foreach ($fields as $name => $f) {
+                $parts[] = "{$f['sql']} AS `{$name}`";
+            }
+            return [
+                'select'  => 'SELECT ' . implode(', ', $parts) . " FROM ({$inner}) d",
+                'count'   => "SELECT COUNT(*) FROM ({$inner}) d",
+                'columns' => array_keys($fields),
+                // Desempate por todas las columnas de detalle (d.*): dos asientos
+                // distintos pueden coincidir en los 10 campos visibles.
+                'ties'    => array_map(static fn($c) => "d.`{$c}`", $detail),
             ];
         }
 
@@ -174,9 +224,10 @@ final class Open_Data
      * agrupación; los desempates garantizan un orden total para que la
      * paginación y las descargas por lotes no repitan ni omitan filas.
      *
-     * @param array<int,string> $columns Columnas publicadas en la agrupación.
+     * @param array<int,string> $columns    Columnas publicadas en la agrupación.
+     * @param array<int,string> $extra_ties Referencias SQL adicionales de desempate.
      */
-    public static function consulta_order(array $columns, string $grouping, string $order_by, string $order, string $default_col): string
+    public static function consulta_order(array $columns, string $grouping, string $order_by, string $order, string $default_col, array $extra_ties = []): string
     {
         $dir = in_array(strtoupper($order), ['ASC', 'DESC'], true) ? strtoupper($order) : 'DESC';
         $col = ($order_by !== '' && in_array($order_by, $columns, true)) ? $order_by : $default_col;
@@ -192,6 +243,9 @@ final class Open_Data
             if ($tie !== $col && in_array($tie, $columns, true)) {
                 $parts[] = "`{$tie}` ASC";
             }
+        }
+        foreach ($extra_ties as $ref) {
+            $parts[] = "{$ref} ASC";
         }
         return 'ORDER BY ' . implode(', ', $parts);
     }
@@ -294,10 +348,15 @@ final class Open_Data
             return $fields;
         };
 
-        $contract_fields = [];
-        foreach (self::available_contract_fields($viewcol) as $name => $f) {
-            $contract_fields[] = ['nombre' => $name, 'tipo' => $f['type'], 'descripcion' => $f['desc']];
-        }
+        $to_doc = static function (array $fields): array {
+            $out = [];
+            foreach ($fields as $name => $f) {
+                $out[] = ['nombre' => $name, 'tipo' => $f['type'], 'descripcion' => $f['desc']];
+            }
+            return $out;
+        };
+        $contract_fields = $to_doc(self::available_contract_fields($viewcol));
+        $classic_fields  = $to_doc(self::available_fields(self::classic_fields(), $viewcol));
 
         return [
             'contratos' => [
@@ -317,7 +376,7 @@ final class Open_Data
             'consulta' => [
                 'titulo'      => __('Ejecución presupuestal de la contratación (vigencia actual)', 'secop-suite'),
                 'descripcion' => __('Contratos de la vigencia en curso cruzados con su ejecución presupuestal en Sysman (vista vista_secop_sysman).', 'secop-suite'),
-                'unicidad'    => __('Sin duplicados: primero se eliminan las filas de detalle repetidas (DISTINCT) y, con agrupar=contrato (predeterminado), se entrega una sola fila por número de contrato con los valores presupuestales sumados.', 'secop-suite'),
+                'unicidad'    => __('Sin duplicados: siempre se eliminan primero las filas de detalle repetidas (DISTINCT sin los identificadores internos), por ejemplo asientos reimportados en Sysman. Por defecto se entrega una fila por asiento distinto, con el mismo formato de siempre; con agrupar=contrato, una sola fila por número de contrato con los valores presupuestales sumados.', 'secop-suite'),
                 'disponible'  => $view !== '',
                 'endpoints'   => [
                     ['metodo' => 'GET', 'url' => $base . 'consulta',     'formato' => 'JSON', 'descripcion' => __('Consulta paginada (per_page máx. 1000).', 'secop-suite')],
@@ -325,8 +384,9 @@ final class Open_Data
                     ['metodo' => 'GET', 'url' => $base . 'consulta/txt', 'formato' => 'TXT',  'descripcion' => __('Descarga completa de la vigencia en texto de ancho fijo.', 'secop-suite')],
                 ],
                 'agrupaciones' => [
-                    'contrato' => ['descripcion' => __('Predeterminada. Una fila por contrato (agrupar=contrato).', 'secop-suite'), 'campos' => $contract_fields],
-                    'detalle'  => ['descripcion' => __('Una fila por asiento presupuestal distinto (agrupar=detalle).', 'secop-suite'), 'campos' => $from_columns(array_intersect_key($viewcol, array_flip(self::detail_columns($viewcol))), [])],
+                    'asiento'  => ['descripcion' => __('Predeterminada (agrupar=asiento). Una fila por asiento presupuestal distinto con estos campos en JSON; las descargas CSV/TXT incluyen todas las columnas de la agrupación «detalle».', 'secop-suite'), 'campos' => $classic_fields],
+                    'contrato' => ['descripcion' => __('Una fila por contrato (agrupar=contrato), con los valores presupuestales sumados.', 'secop-suite'), 'campos' => $contract_fields],
+                    'detalle'  => ['descripcion' => __('Una fila por asiento presupuestal distinto con todas las columnas publicables (agrupar=detalle).', 'secop-suite'), 'campos' => $from_columns(array_intersect_key($viewcol, array_flip(self::detail_columns($viewcol))), [])],
                 ],
             ],
         ];
@@ -339,7 +399,7 @@ final class Open_Data
             'parametros' => [
                 ['nombre' => 'page',            'aplica' => 'JSON',                   'descripcion' => __('Página a consultar (desde 1).', 'secop-suite')],
                 ['nombre' => 'per_page',        'aplica' => 'JSON',                   'descripcion' => __('Registros por página: /contracts máx. 100 (predeterminado 10); /consulta máx. 1000 (predeterminado 100).', 'secop-suite')],
-                ['nombre' => 'agrupar',         'aplica' => '/consulta',              'descripcion' => __('contrato (predeterminado): una fila por contrato · detalle: una fila por asiento presupuestal distinto.', 'secop-suite')],
+                ['nombre' => 'agrupar',         'aplica' => '/consulta',              'descripcion' => __('asiento (predeterminado): una fila por asiento distinto, formato habitual · contrato: una fila por contrato · detalle: una fila por asiento con todas las columnas.', 'secop-suite')],
                 ['nombre' => '{campo}=valor',   'aplica' => __('Todos', 'secop-suite'), 'descripcion' => __('Igualdad exacta sobre cualquier campo.', 'secop-suite')],
                 ['nombre' => '{campo}_like=valor', 'aplica' => __('Todos', 'secop-suite'), 'descripcion' => __('Contiene el texto (sin distinguir mayúsculas).', 'secop-suite')],
                 ['nombre' => '{campo}_min=valor', 'aplica' => __('Todos', 'secop-suite'), 'descripcion' => __('Mayor o igual (números y fechas AAAA-MM-DD).', 'secop-suite')],
@@ -349,7 +409,7 @@ final class Open_Data
             'notas' => [
                 __('Acceso público y gratuito, sin autenticación, solo lectura (método GET).', 'secop-suite'),
                 __('Límite de 30 solicitudes por minuto por dirección IP; al superarlo la API responde HTTP 429.', 'secop-suite'),
-                __('En /consulta los filtros se aplican a las filas de detalle (asientos) antes de agrupar por contrato.', 'secop-suite'),
+                __('En /consulta los filtros se aplican a las filas de detalle (asientos) antes de agrupar por contrato. En la agrupación por asiento, valor_contrato se repite en cada asiento del contrato: no lo sume por filas.', 'secop-suite'),
                 __('Las respuestas JSON de /consulta se almacenan en caché hasta 30 minutos.', 'secop-suite'),
                 __('Privacidad (Ley 1581 de 2012): los documentos de identidad del contratista y del tercero nunca se publican ni pueden usarse como filtro u orden.', 'secop-suite'),
                 __('Los archivos CSV usan codificación UTF-8 con BOM (compatible con Excel) y protegen las celdas contra inyección de fórmulas.', 'secop-suite'),

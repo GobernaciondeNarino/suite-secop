@@ -76,6 +76,25 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.19.0 — Cambios reaplicados sobre la 5.15.0 sin alterar la configuración existente (2026-09-28)
+
+Tras restaurar la 5.15.0 (la configuración de producción se había perdido al **eliminar** la copia 5.15.0 para instalar otra en una carpeta distinta: su `uninstall.php` borraba contratos, opciones, gráficas y filtros), los cambios se reaplicaron por etapas sobre la 5.15.1 y se verificaron en WordPress real con una configuración de producción. Reúne lo que se había publicado como 5.16.0–5.18.0, **corrigiendo lo que alteraba configuraciones existentes**:
+
+**Compatibilidad con la configuración existente (novedad de esta versión):**
+- Las gráficas y cards en **borrador, pendientes o privadas** usadas en páginas se siguen mostrando como en la 5.15.0 (las 5.16–5.18 solo servían las publicadas). Se bloquean solo las de la papelera y los posts que no son gráficas ni cards.
+- **Consulta personalizada**: se validan de verdad todas las tablas de `FROM` (incluidos los JOIN por coma `FROM a, b`) y de los `JOIN`; los `FROM` dentro de funciones como `EXTRACT(YEAR FROM …)` no cuentan. Si al guardar la consulta no pasa la validación, **se conserva la anterior** y se muestra el motivo en pantalla (las 5.16–5.18 la borraban en silencio al pulsar «Actualizar»).
+- La **fecha fin** de importación se respeta tal cual (las 5.16–5.18 ampliaban sola un «31 de diciembre» pasado); si ya pasó, la pestaña Importar datos lo advierte.
+- **`/consulta` conserva su formato**: por defecto (`agrupar=asiento`) publica los mismos 10 campos por asiento que la 5.15.0 y el CSV/TXT todas las columnas publicables, pero sin filas repetidas. `?agrupar=contrato` entrega una fila por contrato y `?agrupar=detalle` todas las columnas por asiento.
+- El **VIEW** de Contratación se crea aunque la tabla de contratos y las de Sysman tengan colaciones distintas (antes fallaba con «Illegal mix of collations» y el módulo quedaba sin datos).
+
+**Reaplicado de 5.16.0 (seguridad y bugs):** documentos de identidad (Ley 1581) fuera de todos los endpoints públicos; XSS en tooltips de d3plus y en el detalle de contratos del admin; consulta personalizada con validación real de tablas; logs fuera de la carpeta pública del plugin; lista blanca de hosts de la API; limitador de peticiones corregido; `/contracts` con `per_page=0`/`page=0`; importador (lote fallido, importaciones >1 h, cancelación); bucle de recargas en Importar; filtros de rango que nunca se aplicaban; cron que no se reprogramaba al guardar; paginación de Registros; caché de Contratación tras importar. Detalle en AUDITORIA.md.
+
+**Reaplicado de 5.17.0:** módulo **Depuración BD** (diagnóstico, análisis por criterio con huella exacta, eliminación con respaldo y restauración por lote, índice único), APIs de Datos Abiertos sin filas repetidas y shortcode **`[secop_diccionario]`** + endpoint `/diccionario`.
+
+**Reaplicado de 5.18.0:** página **Configuración** con pestañas (Importar datos, Registros, Depuración BD, Logs) que corrige el 404 de Depuración BD; URLs antiguas redirigidas; Panel de Control visible en el submenú; listado de Cards sin error de JavaScript.
+
+**Nota**: el log de importación de la 5.15.x (dentro de la carpeta del plugin) no se conserva al reemplazar el plugin, porque WordPress borra esa carpeta; el nuevo log empieza vacío en `wp-content/uploads/`.
+
 ### v5.15.1 — Red de seguridad para instalar y actualizar sin perder datos (2026-09-28)
 
 Parte del código de la **5.15.0** (restaurada a pedido del usuario) y solo agrega protecciones; no cambia ninguna funcionalidad del plugin.
