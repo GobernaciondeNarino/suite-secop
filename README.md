@@ -70,11 +70,26 @@ wp secop truncate --yes                            # Limpiar datos
 - Modal de detalle de contrato con información completa
 - Sistema de logs con información del sistema
 - Panel de información de API REST y comandos CLI
+- **Configuración** (v5.18.0): Importar datos, Registros, Depuración BD y Logs reunidos en una sola página con pestañas
 - **Depuración BD** (v5.17.0): diagnóstico de duplicados, eliminación con respaldo y restauración por lote, restauración del índice único por número de contrato
 
 ---
 
 ## Changelog
+
+### v5.18.0 — Configuración con pestañas, actualización sin duplicar el plugin y datos protegidos al desinstalar (2026-09-28)
+
+**Corrección del error de «Depuración BD» (404 en producción):** el submenú se registraba antes que el menú padre `SECOP Suite`, así que WordPress generaba el enlace `wp-admin/secop-suite-depuracion` (sin `admin.php?page=`) y el tema mostraba «Parece que esta página no existe». La depuración ahora vive como pestaña de Configuración y ya no registra un menú propio.
+
+**Nueva página «Configuración»** (SECOP Suite → Configuración): reúne en pestañas **Importar datos**, **Registros**, **Depuración BD** y **Logs** (`admin.php?page=secop-suite-config&tab=importar|registros|depuracion|logs`). Las URLs antiguas (`secop-suite-import`, `secop-suite-records`, `secop-suite-logs`, `secop-suite-depuracion`) redirigen a la pestaña equivalente conservando sus parámetros. En Registros, las vistas Actual/Consulta usan ahora el parámetro `vista`. Corregido de paso: el estado «Cron activo» de Logs consultaba un hook inexistente y siempre decía «No programado»; la acción rápida «Importar datos» del escritorio apuntaba al propio escritorio.
+
+**Actualizar sin instalar una segunda copia:**
+- `bin/build-zip.sh` genera `dist/secop-suite.zip` con la carpeta raíz `secop-suite/` (la instalada en producción), así WordPress ofrece «Reemplazar el actual con el subido» en lugar de instalar otro plugin. El «Download ZIP» de GitHub trae la carpeta `suite-secop-<rama>` y por eso se instalaba como plugin nuevo.
+- Workflow `.github/workflows/release.yml`: al publicar un tag `vX.Y.Z` verifica la versión, ejecuta las pruebas y adjunta `secop-suite.zip` al release.
+- El actualizador consultaba el repositorio inexistente `GobernaciondeNarino/secop-suite` y nunca ofrecía actualizaciones: ahora usa `GobernaciondeNarino/suite-secop`, prefiere el ZIP del release, conserva la carpeta instalada sea cual sea la del paquete y reactiva el plugin solo si estaba activo.
+- Si por error quedan dos copias instaladas, la segunda ya no provoca un error fatal: no se carga y muestra un aviso con la carpeta que sobra.
+
+**Datos protegidos al desinstalar:** eliminar el plugin desde WordPress ya NO borra la tabla de contratos, la vista, los respaldos, las gráficas, los filtros ni la configuración. Solo se purgan si se marca «Eliminar todos los datos al desinstalar el plugin» (Configuración → Importar datos) y no hay otra copia instalada. ⚠️ Las versiones 5.17.0 y anteriores sí borran todo al pulsar «Eliminar»: no las elimine desde el administrador (ver INSTALACION.md → «Actualizar sin perder datos»).
 
 ### v5.17.0 — Depuración de base de datos, APIs sin duplicados y diccionario de datos (2026-09-25)
 

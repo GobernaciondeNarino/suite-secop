@@ -1,4 +1,4 @@
-# SECOP Suite v5.16.0 - Guia de Instalacion en WordPress
+# SECOP Suite v5.18.0 - Guia de Instalacion en WordPress
 
 ## Requisitos del Sistema
 
@@ -63,7 +63,7 @@ solo reemplaza la version instalada cuando el ZIP que se sube tiene esa misma ca
 
 ### Opcion B: desde el escritorio de WordPress
 
-A partir de la version siguiente a la 5.17.0 el actualizador consulta los releases de
+A partir de la version 5.18.0 el actualizador consulta los releases de
 `GobernaciondeNarino/suite-secop` (hasta la 5.17.0 apuntaba a un repositorio inexistente y
 nunca ofrecia actualizaciones, asi que el primer salto desde la 5.17.0 debe hacerse con la
 Opcion A). Cuando haya un release nuevo aparecera en **Escritorio > Actualizaciones** y en
@@ -105,7 +105,7 @@ ejecuta las pruebas, construye el ZIP y lo publica como asset del GitHub Release
 ### Datos al desinstalar
 
 Desde esta version, eliminar el plugin **conserva todos los datos** por defecto. Solo se
-borran si se marca **SECOP Suite > Importar Datos > Configuracion > Eliminar todos los datos
+borran si se marca **SECOP Suite > Configuracion > Importar datos > Eliminar todos los datos
 al desinstalar el plugin**, y aun asi no se borran si existe otra copia de SECOP Suite en
 `wp-content/plugins/`.
 
@@ -117,7 +117,7 @@ Tras activar el plugin, aparecera un nuevo menu **SECOP Suite** en la barra late
 
 ### Paso 2: Configurar la API
 
-1. Ir a **SECOP Suite > Importar Datos**
+1. Ir a **SECOP Suite > Configuracion** (pestaña **Importar datos**)
 2. En la seccion "Configuracion", completar:
    - **URL de la API**: `https://www.datos.gov.co/resource/jbjy-vk9h.json` (predeterminada)
    - **NIT de la Entidad**: El NIT de su entidad (ej: `800103923`)
@@ -132,7 +132,7 @@ Tras activar el plugin, aparecera un nuevo menu **SECOP Suite** en la barra late
 
 ### Paso 4: Verificar datos
 
-1. Ir a **SECOP Suite > Ver Registros**
+1. Ir a **SECOP Suite > Configuracion** (pestaña **Registros**)
 2. Verificar que los contratos se cargaron correctamente
 3. Usar los filtros de busqueda, ano y estado para explorar los datos
 
@@ -167,7 +167,7 @@ Parametros opcionales:
 
 Para programar importaciones automaticas:
 
-1. Ir a **SECOP Suite > Importar Datos > Configuracion**
+1. Ir a **SECOP Suite > Configuracion** (pestaña **Importar datos**)
 2. Activar **Actualizacion Automatica**
 3. Seleccionar frecuencia: Diario, Semanal o Mensual
 4. Guardar configuracion
@@ -248,9 +248,9 @@ location ~* /wp-content/plugins/secop-suite/logs/ {
 
 ## Verificar Instalacion
 
-Tras la instalacion, verifique en **SECOP Suite > Logs** que:
+Tras la instalacion, verifique en **SECOP Suite > Configuracion** (pestaña **Logs**) que:
 
-- La version del plugin es 5.16.0
+- La version del plugin es 5.18.0
 - La version de PHP cumple el requisito (8.1+)
 - El estado del sistema es "Listo"
 - WP-Cron esta activo (si usa actualizaciones automaticas)
@@ -263,7 +263,7 @@ de contratos, vista de seguimiento, respaldos, graficas, filtros, cards y opcion
 una reinstalacion o actualizacion los reutilice.
 
 Para borrar tambien los datos, marcar antes **Eliminar todos los datos al desinstalar el
-plugin** en **SECOP Suite > Importar Datos > Configuracion**. Aun con esa casilla marcada, no se
+plugin** en **SECOP Suite > Configuracion** (pestaña **Importar datos**). Aun con esa casilla marcada, no se
 borra nada si hay otra copia de SECOP Suite instalada en `wp-content/plugins/`.
 
 > Las versiones 5.17.0 y anteriores borraban todos los datos al eliminar el plugin. Vea
