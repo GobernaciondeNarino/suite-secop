@@ -303,7 +303,7 @@ $presets = $tracking->presets();
     <?php
     // v5.6.0: Explorador interactivo [secop_dep_explora].
     $explora_params = [
-        ['campos', __('Campos de la fila 1 de cada contrato, separados por comas (orden de columnas). Disponibles: numero_del_contrato, valor_contrato, fecha_inicio_ejecucion, fecha_fin_ejecucion, modalidad_de_contratacion, tipo_de_contrato, nombretercero, documento_proveedor. El objeto del contrato siempre se muestra en una segunda fila a ancho completo.', 'secop-suite')],
+        ['campos', __('Campos de la fila 1 de cada contrato, separados por comas (orden de columnas). Disponibles: numero_del_contrato, valor_contrato, fecha_inicio_ejecucion, fecha_fin_ejecucion, modalidad_de_contratacion, tipo_de_contrato, nombretercero. El objeto del contrato siempre se muestra en una segunda fila a ancho completo.', 'secop-suite')],
         ['height', __('Altura mínima del treemap en píxeles (por defecto 460).', 'secop-suite')],
     ];
     $explora_shortcodes = [
@@ -410,7 +410,7 @@ $presets = $tracking->presets();
     $lista_params = [
         ['tipo',   __('Qué lista renderiza: dependencias, modalidades, tipos o contratistas (por defecto dependencias).', 'secop-suite')],
         ['titulo', __('Título de la lista (por defecto el nombre del tipo).', 'secop-suite')],
-        ['campos', __('Sólo para tipo="contratistas": campos de la fila 1 de cada contrato, separados por comas. Disponibles: numero_del_contrato, valor_contrato, fecha_inicio_ejecucion, fecha_fin_ejecucion, modalidad_de_contratacion, tipo_de_contrato, nombretercero, documento_proveedor. El objeto del contrato siempre se muestra en una segunda fila a ancho completo.', 'secop-suite')],
+        ['campos', __('Sólo para tipo="contratistas": campos de la fila 1 de cada contrato, separados por comas. Disponibles: numero_del_contrato, valor_contrato, fecha_inicio_ejecucion, fecha_fin_ejecucion, modalidad_de_contratacion, tipo_de_contrato, nombretercero. El objeto del contrato siempre se muestra en una segunda fila a ancho completo.', 'secop-suite')],
         ['height', __('Altura máxima del cuerpo desplazable en píxeles (por defecto 360).', 'secop-suite')],
     ];
     $lista_shortcodes = [

@@ -47,6 +47,15 @@ if (!defined('ABSPATH')) {
                 <td><code>formato</code> — tabla | csv | txt | json</td>
                 <td>tabla, CSV, TXT, JSON</td>
             </tr>
+            <tr>
+                <td><code>[secop_diccionario]</code></td>
+                <td><?php esc_html_e(
+                    'Diccionario de datos y guía de uso de la API para el público: puntos de acceso, campos con su tipo y descripción (generados a partir de la base de datos real), parámetros de filtrado, ejemplos, estructura de la respuesta y condiciones de uso.',
+                    'secop-suite'
+                ); ?></td>
+                <td><code>api</code> — todas | contratos | consulta<br><code>ejemplos</code> — si | no<br><code>titulo</code></td>
+                <td>HTML</td>
+            </tr>
         </tbody>
     </table>
 
@@ -64,7 +73,7 @@ if (!defined('ABSPATH')) {
                 <td><code><?php echo esc_html(rest_url('secop-suite/v1/consulta')); ?></code></td>
                 <td>JSON</td>
                 <td><?php esc_html_e(
-                    'Ejecución presupuestal de la vigencia actual, paginada. Parámetros: page (default 1), per_page (default 100, máx 1000). Acceso público.',
+                    'Ejecución presupuestal de la vigencia actual, paginada y SIN duplicados. Parámetros: page (default 1), per_page (default 100, máx 1000), agrupar (contrato = una fila por contrato, predeterminado | detalle = una fila por asiento presupuestal distinto). La respuesta incluye total y total_pages. Acceso público.',
                     'secop-suite'
                 ); ?></td>
             </tr>
@@ -72,7 +81,7 @@ if (!defined('ABSPATH')) {
                 <td><code><?php echo esc_html(rest_url('secop-suite/v1/consulta/csv')); ?></code></td>
                 <td>CSV</td>
                 <td><?php esc_html_e(
-                    'Descarga CSV completa de la vigencia actual, ordenada por valor de débito descendente. Acceso público.',
+                    'Descarga CSV completa de la vigencia actual sin duplicados (acepta agrupar=contrato|detalle y los mismos filtros). Ordenada por valor efectivo descendente. Acceso público.',
                     'secop-suite'
                 ); ?></td>
             </tr>
@@ -80,7 +89,7 @@ if (!defined('ABSPATH')) {
                 <td><code><?php echo esc_html(rest_url('secop-suite/v1/consulta/txt')); ?></code></td>
                 <td>TXT</td>
                 <td><?php esc_html_e(
-                    'Descarga TXT ancho fijo de la vigencia actual, ordenada por valor de débito descendente. Acceso público.',
+                    'Descarga TXT ancho fijo de la vigencia actual sin duplicados (acepta agrupar=contrato|detalle y los mismos filtros). Acceso público.',
                     'secop-suite'
                 ); ?></td>
             </tr>
@@ -108,6 +117,14 @@ if (!defined('ABSPATH')) {
                     'secop-suite'
                 ); ?></td>
             </tr>
+            <tr>
+                <td><code><?php echo esc_html(rest_url('secop-suite/v1/diccionario')); ?></code></td>
+                <td>JSON</td>
+                <td><?php esc_html_e(
+                    'Diccionario de datos legible por máquinas: conjuntos de datos, puntos de acceso, campos (nombre, tipo, descripción), parámetros y condiciones de uso. Acceso público.',
+                    'secop-suite'
+                ); ?></td>
+            </tr>
         </tbody>
     </table>
 
@@ -123,6 +140,7 @@ if (!defined('ABSPATH')) {
         <li><code>?columna_max=valor</code> — <?php esc_html_e('menor o igual (≤), para números/fechas.', 'secop-suite'); ?></li>
         <li><code>order_by=columna&order=asc|desc</code> — <?php esc_html_e('orden por columna y dirección.', 'secop-suite'); ?></li>
         <li><code>page</code>, <code>per_page</code> — <?php esc_html_e('paginación (JSON).', 'secop-suite'); ?></li>
+        <li><code>agrupar=contrato|detalle</code> — <?php esc_html_e('solo /consulta: una fila por contrato (predeterminado) o una fila por asiento presupuestal distinto.', 'secop-suite'); ?></li>
     </ul>
     <table class="widefat striped">
         <thead>
@@ -162,4 +180,15 @@ if (!defined('ABSPATH')) {
         'Nota de privacidad: las columnas de datos personales del proveedor (documento_proveedor / tipo_documento_proveedor) nunca se exponen ni se pueden filtrar/ordenar (Ley 1581). Las columnas y direcciones de orden inválidas se ignoran de forma segura.',
         'secop-suite'
     ); ?></em></p>
+
+    <h2><?php esc_html_e('Deduplicación de las APIs', 'secop-suite'); ?></h2>
+    <p><?php esc_html_e(
+        'La vista vista_secop_sysman cruza cada contrato con todos sus asientos presupuestales, por lo que un contrato con varios asientos aparece varias veces en la vista. Desde la versión 5.17.0 los endpoints /consulta eliminan primero las filas repetidas (DISTINCT, sin los identificadores internos de cada tabla) y, por defecto, entregan una sola fila por contrato con los valores presupuestales sumados. Los endpoints /contracts y /export leen la tabla de contratos, cuyo índice único impide que un número de contrato se repita. Para limpiar duplicados en la propia base de datos use SECOP Suite > Depuración BD.',
+        'secop-suite'
+    ); ?></p>
+
+    <h2><?php esc_html_e('Vista previa de [secop_diccionario]', 'secop-suite'); ?></h2>
+    <div class="ss-admin-dicc-preview">
+        <?php echo do_shortcode('[secop_diccionario ejemplos="si"]'); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- salida escapada en la plantilla ?>
+    </div>
 </div>
