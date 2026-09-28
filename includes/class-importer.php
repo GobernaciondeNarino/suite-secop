@@ -431,7 +431,7 @@ final class Importer
     /**
      * Invalidar cache de gráficas tras importación.
      */
-    private function invalidate_chart_cache(): void
+    public function invalidate_chart_cache(): void
     {
         global $wpdb;
         // Eliminar transients de cache de charts Y del módulo de seguimiento

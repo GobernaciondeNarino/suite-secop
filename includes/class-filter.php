@@ -29,7 +29,7 @@ final class Filter
     private const ALLOWED_OPERATORS = ['=', '!=', '>', '<', '>=', '<=', 'LIKE'];
 
     /** Datos personales del proveedor — Ley 1581: nunca se devuelven al frontend público. */
-    private const PII_COLS = ['documento_proveedor', 'tipo_documento_proveedor'];
+    private const PII_COLS = Open_Data::PII_COLS;
 
     public function __construct(Database $db)
     {

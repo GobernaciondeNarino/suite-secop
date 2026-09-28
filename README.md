@@ -49,7 +49,13 @@ GET /wp-json/secop-suite/v1/contracts/{id}   # Detalle de contrato
 GET /wp-json/secop-suite/v1/stats            # Estadísticas generales
 GET /wp-json/secop-suite/v1/chart/{id}/data  # Datos de gráfica
 GET /wp-json/secop-suite/v1/chart/{id}/csv   # Descargar CSV
+GET /wp-json/secop-suite/v1/export/csv|txt   # Descarga completa de contratos
+GET /wp-json/secop-suite/v1/consulta         # Ejecución de la vigencia, una fila por contrato (?agrupar=detalle)
+GET /wp-json/secop-suite/v1/consulta/csv|txt # Descarga de la vigencia sin duplicados
+GET /wp-json/secop-suite/v1/diccionario      # Diccionario de datos (JSON)
 ```
+
+Guía pública de la API con diccionario de campos: `[secop_diccionario api="todas|contratos|consulta" ejemplos="si|no"]`.
 
 ### Comandos WP-CLI
 ```bash
@@ -64,6 +70,7 @@ wp secop truncate --yes                            # Limpiar datos
 - Modal de detalle de contrato con información completa
 - Sistema de logs con información del sistema
 - Panel de información de API REST y comandos CLI
+- **Depuración BD** (v5.17.0): diagnóstico de duplicados, eliminación con respaldo y restauración por lote, restauración del índice único por número de contrato
 
 ---
 

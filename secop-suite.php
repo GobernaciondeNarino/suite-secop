@@ -104,6 +104,8 @@ final class Plugin
     private Rest_Api $rest_api;
     private Updater $updater;
     private Tracking $tracking;
+    private Open_Data $open_data;
+    private Deduplicator $deduplicator;
 
     private function __construct()
     {
@@ -114,6 +116,8 @@ final class Plugin
         $this->rest_api   = new Rest_Api($this->database);
         $this->updater    = new Updater();
         $this->tracking   = new Tracking($this->database);
+        $this->open_data  = new Open_Data($this->database);
+        $this->deduplicator = new Deduplicator($this->database);
 
         $this->register_hooks();
     }
@@ -129,6 +133,7 @@ final class Plugin
     public function visualizer(): Visualizer { return $this->visualizer; }
     public function filter(): Filter         { return $this->filter; }
     public function tracking(): Tracking     { return $this->tracking; }
+    public function open_data(): Open_Data   { return $this->open_data; }
 
     // ── Hooks ──────────────────────────────────────────────────
     private function register_hooks(): void
@@ -365,6 +370,11 @@ final class Plugin
     // ── Assets de administración ───────────────────────────────
     public function enqueue_admin_assets(string $hook): void
     {
+        // Vista previa de [secop_diccionario] en la página de Datos Abiertos.
+        if (str_contains($hook, 'secop-suite-datos-abiertos')) {
+            wp_enqueue_style('secop-suite-diccionario', SECOP_SUITE_URL . 'assets/css/diccionario.css', [], SECOP_SUITE_VERSION);
+        }
+
         // Import pages
         if (str_contains($hook, 'secop-suite')) {
             wp_enqueue_style(
