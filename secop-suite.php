@@ -749,7 +749,15 @@ final class Plugin
             $this->maybe_upgrade();
         }
 
-        // 2) Garantía adicional: si el VIEW no existe y hay tablas Sysman, crearlo
+        // 2) Si la actualización automática está activa pero no hay evento programado
+        //    (p. ej. se desactivó otra copia del plugin y esta nunca pasó por activate()),
+        //    reprogramarla; si no, las importaciones se detendrían en silencio.
+        if (get_option(SECOP_SUITE_PREFIX . 'auto_update_enabled', false)
+            && !wp_next_scheduled('secop_suite_scheduled_import')) {
+            $this->schedule_import();
+        }
+
+        // 3) Garantía adicional: si el VIEW no existe y hay tablas Sysman, crearlo
         //    (gateado por transient para no consultar la BD en cada carga de página).
         if (get_transient(SECOP_SUITE_PREFIX . 'view_checked')) return;
         set_transient(SECOP_SUITE_PREFIX . 'view_checked', 1, HOUR_IN_SECONDS);
