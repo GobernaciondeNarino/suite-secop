@@ -198,7 +198,7 @@ final class Tracking
             'tipo_de_contrato'            => __('Tipo', 'secop-suite'),
             'nombretercero'               => __('Contratista', 'secop-suite'),
             'nom_raz_social_contratista'  => __('Contratista (SECOP)', 'secop-suite'),
-            // Ley 1581: documento_proveedor (PII) retirado de los campos públicos.
+            'documento_proveedor'         => __('Documento', 'secop-suite'),
             'rubro_nombre'                => __('Rubro', 'secop-suite'),
         ];
     }
@@ -899,15 +899,13 @@ final class Tracking
 
     public function enqueue_admin_assets(string $hook): void
     {
-        // Solo en las pantallas de alta/edición de la card: el listado
-        // (edit.php) también tiene post_type=secop_dep_card, pero no tiene el
-        // contenedor de la vista previa (cargaba ~1,6 MB de JS y fallaba).
-        // El global $post_type a veces no está disponible en admin_enqueue_scripts.
+        // Detección robusta de la pantalla de edición de la card (el global
+        // $post_type a veces no está disponible en admin_enqueue_scripts).
         $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-        $is_card_screen = in_array($hook, ['post.php', 'post-new.php'], true)
-            && (($screen && $screen->post_type === self::POST_TYPE)
-                || (($GLOBALS['post_type'] ?? '') === self::POST_TYPE)
-                || ($_GET['post_type'] ?? '') === self::POST_TYPE);
+        $is_card_screen = ($screen && $screen->post_type === self::POST_TYPE)
+            || (($GLOBALS['post_type'] ?? '') === self::POST_TYPE)
+            || (in_array($hook, ['post.php', 'post-new.php'], true)
+                && ($_GET['post_type'] ?? '') === self::POST_TYPE);
         if (!$is_card_screen) return;
         // Reutiliza las librerías de gráfica del Visualizer vía el handle compartido.
         wp_enqueue_style('secop-suite-admin', SECOP_SUITE_URL . 'assets/css/admin.css', [], SECOP_SUITE_VERSION);
@@ -1707,7 +1705,10 @@ final class Tracking
     public function ajax_drill(): void
     {
         check_ajax_referer('secop_dep_frontend', 'nonce');
-        if (Rate_Limiter::limited('dep', 60)) wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
+        // rate limit por IP (igual patrón que ajax_contratos)
+        $ip_key = 'secop_dep_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
+        if ((int) get_transient($ip_key) > 60) wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
+        set_transient($ip_key, ((int) get_transient($ip_key)) + 1, MINUTE_IN_SECONDS);
 
         $column = sanitize_text_field(wp_unslash($_POST['column'] ?? ''));
         $value  = sanitize_text_field(wp_unslash($_POST['value'] ?? ''));
@@ -1719,9 +1720,11 @@ final class Tracking
     {
         check_ajax_referer('secop_dep_frontend', 'nonce');
         // FIX 4: rate-limit por IP (60 req/min)
-        if (Rate_Limiter::limited('dep', 60)) {
+        $ip_key = 'secop_dep_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
+        if ((int) get_transient($ip_key) > 60) {
             wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
         }
+        set_transient($ip_key, ((int) get_transient($ip_key)) + 1, MINUTE_IN_SECONDS);
 
         $dep = sanitize_text_field($_POST['dependencia'] ?? '');
         if ($dep === '') wp_send_json_error(['message' => 'Dependencia requerida']);
@@ -1923,7 +1926,9 @@ final class Tracking
     public function ajax_network(): void
     {
         check_ajax_referer('secop_dep_frontend', 'nonce');
-        if (Rate_Limiter::limited('dep', 60)) wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
+        $ip_key = 'secop_dep_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
+        if ((int) get_transient($ip_key) > 60) wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
+        set_transient($ip_key, ((int) get_transient($ip_key)) + 1, MINUTE_IN_SECONDS);
 
         $dep   = sanitize_text_field(wp_unslash($_POST['dependencia'] ?? ''));
         // 0 = todos los contratistas; se acota a 5000 por seguridad/rendimiento.
@@ -2029,7 +2034,9 @@ final class Tracking
     public function ajax_prediccion(): void
     {
         check_ajax_referer('secop_dep_frontend', 'nonce');
-        if (Rate_Limiter::limited('dep', 60)) wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
+        $ip_key = 'secop_dep_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
+        if ((int) get_transient($ip_key) > 60) wp_send_json_error(['message' => 'Demasiadas solicitudes'], 429);
+        set_transient($ip_key, ((int) get_transient($ip_key)) + 1, MINUTE_IN_SECONDS);
 
         $dep = sanitize_text_field(wp_unslash($_POST['dependencia'] ?? ''));
         wp_send_json_success($this->prediccion_data($dep !== '' ? $dep : null));
@@ -2222,6 +2229,7 @@ final class Tracking
                        MAX(fecha_fin_ejecucion)       AS fecha_fin_ejecucion,
                        MAX(modalidad_de_contratacion) AS modalidad_de_contratacion,
                        MAX(tipo_de_contrato)          AS tipo_de_contrato,
+                       MAX(documento_proveedor)       AS documento_proveedor,
                        MAX(url_contrato)              AS url_contrato,
                        MAX(objeto_a_contratar)        AS objeto_a_contratar
                 FROM `{$view}` WHERE {$where_sql}
@@ -2247,6 +2255,7 @@ final class Tracking
                 'fecha_fin_ejecucion'       => (string) ($r['fecha_fin_ejecucion'] ?? ''),
                 'modalidad_de_contratacion' => (string) ($r['modalidad_de_contratacion'] ?? ''),
                 'tipo_de_contrato'          => (string) ($r['tipo_de_contrato'] ?? ''),
+                'documento_proveedor'       => (string) ($r['documento_proveedor'] ?? ''),
                 'url_contrato'              => (string) ($r['url_contrato'] ?? ''),
                 'objeto_a_contratar'        => (string) ($r['objeto_a_contratar'] ?? ''),
             ];
@@ -2263,7 +2272,10 @@ final class Tracking
     /** Rate-limit por IP compartido por los endpoints del explorador. */
     private function explora_rate_limit(): bool
     {
-        return Rate_Limiter::limited('dep', 60);
+        $ip_key = 'secop_dep_rl_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
+        if ((int) get_transient($ip_key) > 60) return true;
+        set_transient($ip_key, ((int) get_transient($ip_key)) + 1, MINUTE_IN_SECONDS);
+        return false;
     }
 
     /** AJAX — árbol de dependencias para el treemap. */
@@ -2472,6 +2484,7 @@ final class Tracking
                        MAX(fecha_fin_ejecucion)       AS fecha_fin_ejecucion,
                        MAX(modalidad_de_contratacion) AS modalidad_de_contratacion,
                        MAX(tipo_de_contrato)          AS tipo_de_contrato,
+                       MAX(documento_proveedor)       AS documento_proveedor,
                        MAX(url_contrato)              AS url_contrato,
                        MAX(objeto_a_contratar)        AS objeto_a_contratar
                 FROM `{$view}` WHERE {$where_sql}
@@ -2496,6 +2509,7 @@ final class Tracking
                 'fecha_fin_ejecucion'       => (string) ($r['fecha_fin_ejecucion'] ?? ''),
                 'modalidad_de_contratacion' => (string) ($r['modalidad_de_contratacion'] ?? ''),
                 'tipo_de_contrato'          => (string) ($r['tipo_de_contrato'] ?? ''),
+                'documento_proveedor'       => (string) ($r['documento_proveedor'] ?? ''),
                 'url_contrato'              => (string) ($r['url_contrato'] ?? ''),
                 'objeto_a_contratar'        => (string) ($r['objeto_a_contratar'] ?? ''),
             ];

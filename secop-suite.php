@@ -1,9 +1,9 @@
 <?php
 /**
  * Plugin Name: SECOP Suite
- * Plugin URI: https://github.com/GobernaciondeNarino/suite-secop
+ * Plugin URI: https://github.com/GobernaciondeNarino/secop-suite
  * Description: Plugin integral para la importación, almacenamiento y visualización interactiva de datos contractuales del SECOP (Sistema Electrónico de Contratación Pública) de Colombia. Combina importación automatizada desde datos.gov.co con gráficas D3plus configurables mediante shortcodes.
- * Version: 5.18.0
+ * Version: 5.15.0
  * Requires at least: 6.0
  * Requires PHP: 8.1
  * Author: Jonnathan Bucheli Galindo - Gobernación de Nariño
@@ -24,54 +24,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-// ─── Guarda contra copias duplicadas ───────────────────────────
-// Si otra carpeta del plugin (p. ej. «suite-secop-main» subida desde el
-// «Download ZIP» de GitHub) ya se cargó en esta petición, esta copia NO carga
-// nada más: así se evita el error fatal «Cannot declare class SecopSuite\Plugin»
-// y que ambas copias registren hooks a la vez. Solo se muestra un aviso en el
-// administrador indicando qué carpeta está activa y cuál sobra.
-// Un `return` a nivel de archivo detiene la inclusión de este archivo; las
-// declaraciones de clase posteriores no llegan a ejecutarse. (PHP puede
-// declarar Plugin de antemano al compilar ESTE archivo, por eso solo cuenta
-// como duplicado si la clase existente viene de otro archivo.)
-if (defined('SECOP_SUITE_VERSION')
-    || (class_exists(__NAMESPACE__ . '\\Plugin', false)
-        && (new \ReflectionClass(__NAMESPACE__ . '\\Plugin'))->getFileName() !== __FILE__)) {
-    $secop_suite_activa = defined('SECOP_SUITE_BASENAME') ? dirname(\SECOP_SUITE_BASENAME) : '';
-    $secop_suite_sobra  = function_exists('plugin_basename') ? dirname(plugin_basename(__FILE__)) : basename(__DIR__);
-
-    // Misma carpeta incluida de nuevo (p. ej. activate_plugin() durante una
-    // actualización en la misma petición): no es un duplicado, salir en silencio.
-    if ($secop_suite_activa !== $secop_suite_sobra && function_exists('add_action')) {
-        $secop_suite_aviso = static function () use ($secop_suite_activa, $secop_suite_sobra): void {
-            if (!function_exists('current_user_can') || !current_user_can('activate_plugins')) {
-                return;
-            }
-            $version_activa = defined('SECOP_SUITE_VERSION') ? (string) \SECOP_SUITE_VERSION : '?';
-            echo '<div class="notice notice-error"><p><strong>'
-               . esc_html__('SECOP Suite: hay dos copias del plugin instaladas.', 'secop-suite')
-               . '</strong> '
-               . sprintf(
-                   /* translators: 1: carpeta activa, 2: versión activa, 3: carpeta duplicada */
-                   esc_html__('Se está usando la carpeta %1$s (v%2$s). La carpeta %3$s sobra y no se cargó.', 'secop-suite'),
-                   '<code>wp-content/plugins/' . esc_html($secop_suite_activa !== '' ? $secop_suite_activa : '?') . '/</code>',
-                   esc_html($version_activa),
-                   '<code>wp-content/plugins/' . esc_html($secop_suite_sobra) . '/</code>'
-               )
-               . '</p><p>'
-               . esc_html__('Desactive la copia sobrante y borre su carpeta por FTP o con el administrador de archivos del hosting. No use «Eliminar» en una copia de la versión 5.17.0 o anterior: su desinstalador borra los datos del plugin.', 'secop-suite')
-               . '</p></div>';
-        };
-        add_action('admin_notices', $secop_suite_aviso);
-        add_action('network_admin_notices', $secop_suite_aviso);
-        unset($secop_suite_aviso);
-    }
-    unset($secop_suite_activa, $secop_suite_sobra);
-    return;
-}
-
 // ─── Constantes ────────────────────────────────────────────────
-define('SECOP_SUITE_VERSION', '5.18.0');
+define('SECOP_SUITE_VERSION', '5.15.0');
 define('SECOP_SUITE_DB_VERSION', '5.11.1');
 define('SECOP_SUITE_DIR', plugin_dir_path(__FILE__));
 define('SECOP_SUITE_URL', plugin_dir_url(__FILE__));
@@ -96,20 +50,6 @@ spl_autoload_register(static function (string $class): void {
 // ─── Clase principal ───────────────────────────────────────────
 final class Plugin
 {
-    /** Slug de la página «Configuración» (pestañas Importar · Registros · Depuración · Logs). */
-    public const CONFIG_PAGE = 'secop-suite-config';
-
-    /**
-     * Páginas sueltas antiguas (antes de agruparlas en pestañas) → pestaña equivalente de Configuración.
-     * Se conservan para redirigir marcadores y enlaces antiguos.
-     */
-    private const LEGACY_PAGES = [
-        'secop-suite-import'     => 'importar',
-        'secop-suite-records'    => 'registros',
-        'secop-suite-depuracion' => 'depuracion',
-        'secop-suite-logs'       => 'logs',
-    ];
-
     private static ?Plugin $instance = null;
     private Database $database;
     private Importer $importer;
@@ -118,8 +58,6 @@ final class Plugin
     private Rest_Api $rest_api;
     private Updater $updater;
     private Tracking $tracking;
-    private Open_Data $open_data;
-    private Deduplicator $deduplicator;
 
     private function __construct()
     {
@@ -130,8 +68,6 @@ final class Plugin
         $this->rest_api   = new Rest_Api($this->database);
         $this->updater    = new Updater();
         $this->tracking   = new Tracking($this->database);
-        $this->open_data  = new Open_Data($this->database);
-        $this->deduplicator = new Deduplicator($this->database);
 
         $this->register_hooks();
     }
@@ -147,7 +83,6 @@ final class Plugin
     public function visualizer(): Visualizer { return $this->visualizer; }
     public function filter(): Filter         { return $this->filter; }
     public function tracking(): Tracking     { return $this->tracking; }
-    public function open_data(): Open_Data   { return $this->open_data; }
 
     // ── Hooks ──────────────────────────────────────────────────
     private function register_hooks(): void
@@ -156,10 +91,7 @@ final class Plugin
         register_deactivation_hook(__FILE__, [$this, 'deactivate']);
 
         add_action('init', [$this, 'load_textdomain']);
-        // Prioridad 9: antes de _add_post_type_submenus (10). Si los CPT con
-        // show_in_menu='secop-suite' se añaden primero, WordPress ya no crea la
-        // entrada del panel en el submenú y el panel queda inaccesible desde el menú.
-        add_action('admin_menu', [$this, 'register_admin_menu'], 9);
+        add_action('admin_menu', [$this, 'register_admin_menu']);
         add_action('admin_menu', [$this, 'sort_submenus'], 9999);
         add_action('admin_init', [$this, 'register_settings']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
@@ -167,24 +99,6 @@ final class Plugin
 
         add_filter('cron_schedules', [$this, 'add_cron_schedules']);
         add_action('secop_suite_scheduled_import', [$this->importer, 'run_scheduled']);
-
-        // Reprogramar el cron cuando se guardan los ajustes de auto-actualización.
-        add_action('update_option_' . SECOP_SUITE_PREFIX . 'auto_update_enabled', [$this, 'reschedule_import'], 10, 0);
-        add_action('update_option_' . SECOP_SUITE_PREFIX . 'auto_update_frequency', [$this, 'reschedule_import'], 10, 0);
-        add_action('add_option_' . SECOP_SUITE_PREFIX . 'auto_update_enabled', [$this, 'reschedule_import'], 10, 0);
-
-        // Procesar el POST de limpieza de logs ANTES de que el admin envíe salida
-        // (hacerlo dentro del render de la pestaña Logs provocaba "headers already sent").
-        add_action('admin_init', [$this, 'maybe_clear_logs']);
-
-        // Redirección de las páginas sueltas antiguas a su pestaña de Configuración.
-        // Como esos slugs ya no están registrados, WordPress deniega el acceso en
-        // wp-admin/includes/menu.php ANTES de admin_init y dispara
-        // «admin_page_access_denied» justo antes de wp_die(): ese es el punto real
-        // de redirección. El enganche en admin_init queda como respaldo por si otro
-        // código registrara alguno de esos slugs.
-        add_action('admin_page_access_denied', [$this, 'maybe_redirect_legacy_pages']);
-        add_action('admin_init', [$this, 'maybe_redirect_legacy_pages'], 1);
 
         // Background import hook
         add_action('secop_suite_run_import', [$this->importer, 'run_background']);
@@ -306,28 +220,31 @@ final class Plugin
             21
         );
 
-        // Primera entrada del submenú: el panel (mismo slug que el menú padre).
         add_submenu_page(
             'secop-suite',
-            __('Panel de Control', 'secop-suite'),
-            __('Panel de Control', 'secop-suite'),
+            __('Importar Datos', 'secop-suite'),
+            __('Importar Datos', 'secop-suite'),
             'manage_options',
-            'secop-suite',
-            [$this, 'render_dashboard_page']
+            'secop-suite-import',
+            [$this, 'render_import_page']
         );
 
-        // Importar datos, Registros, Depuración BD y Logs se agrupan como
-        // pestañas de una sola página. Se registra aquí (después de add_menu_page)
-        // para que el hookname tenga el padre correcto; antes Depuración BD se
-        // registraba desde su propio admin_menu, ANTES que el menú padre, y en
-        // producción su enlace apuntaba a /wp-admin/secop-suite-depuracion (404).
         add_submenu_page(
             'secop-suite',
-            __('Configuración', 'secop-suite'),
-            __('Configuración', 'secop-suite'),
+            __('Registros', 'secop-suite'),
+            __('Registros', 'secop-suite'),
             'manage_options',
-            self::CONFIG_PAGE,
-            [$this, 'render_config_page']
+            'secop-suite-records',
+            [$this, 'render_records_page']
+        );
+
+        add_submenu_page(
+            'secop-suite',
+            __('Logs', 'secop-suite'),
+            __('Logs', 'secop-suite'),
+            'manage_options',
+            'secop-suite-logs',
+            [$this, 'render_logs_page']
         );
 
         add_submenu_page(
@@ -355,15 +272,12 @@ final class Plugin
         global $submenu;
         if (empty($submenu['secop-suite'])) return;
         $items = $submenu['secop-suite'];
-        // El panel (slug del menú padre) va siempre primero; el resto, alfabético.
-        $panel = array_values(array_filter($items, static fn($i) => ($i[2] ?? '') === 'secop-suite'));
-        $items = array_filter($items, static fn($i) => ($i[2] ?? '') !== 'secop-suite');
         usort($items, static function ($a, $b) {
             $ta = html_entity_decode(wp_strip_all_tags($a[0]));
             $tb = html_entity_decode(wp_strip_all_tags($b[0]));
             return strcasecmp($ta, $tb);
         });
-        $submenu['secop-suite'] = array_merge($panel, array_values($items));
+        $submenu['secop-suite'] = array_values($items);
     }
 
     // ── Registro de configuraciones ────────────────────────────
@@ -390,17 +304,11 @@ final class Plugin
         foreach ($fields as $key => $args) {
             register_setting('secop_suite_settings', SECOP_SUITE_PREFIX . $key, $args);
         }
-        register_setting('secop_suite_settings', 'secop_suite_delete_data_on_uninstall', ['type' => 'boolean', 'default' => false, 'sanitize_callback' => 'rest_sanitize_boolean']);
     }
 
     // ── Assets de administración ───────────────────────────────
     public function enqueue_admin_assets(string $hook): void
     {
-        // Vista previa de [secop_diccionario] en la página de Datos Abiertos.
-        if (str_contains($hook, 'secop-suite-datos-abiertos')) {
-            wp_enqueue_style('secop-suite-diccionario', SECOP_SUITE_URL . 'assets/css/diccionario.css', [], SECOP_SUITE_VERSION);
-        }
-
         // Import pages
         if (str_contains($hook, 'secop-suite')) {
             wp_enqueue_style(
@@ -455,94 +363,7 @@ final class Plugin
         include SECOP_SUITE_DIR . 'templates/admin/dashboard-page.php';
     }
 
-    // ── Página «Configuración» con pestañas ────────────────────
-
-    /**
-     * Pestañas de la página Configuración, en orden (la primera es la de defecto).
-     *
-     * @return array<string,string> slug => etiqueta
-     */
-    public static function config_tabs(): array
-    {
-        return [
-            'importar'   => __('Importar datos', 'secop-suite'),
-            'registros'  => __('Registros', 'secop-suite'),
-            'depuracion' => __('Depuración BD', 'secop-suite'),
-            'logs'       => __('Logs', 'secop-suite'),
-        ];
-    }
-
-    /** Pestaña solicitada en la URL, validada contra la lista blanca. */
-    public static function current_config_tab(): string
-    {
-        $tabs = array_keys(self::config_tabs());
-        $raw  = isset($_GET['tab']) && is_string($_GET['tab']) ? sanitize_key(wp_unslash($_GET['tab'])) : '';
-        return in_array($raw, $tabs, true) ? $raw : $tabs[0];
-    }
-
-    /**
-     * URL de una pestaña de Configuración (sin escapar: usar esc_url() al imprimir).
-     *
-     * @param array<string,scalar> $args Parámetros adicionales de la query.
-     */
-    public static function config_url(string $tab = 'importar', array $args = []): string
-    {
-        $query = array_merge(['page' => self::CONFIG_PAGE, 'tab' => $tab], $args);
-        // http_build_query codifica claves y valores (también arrays anidados).
-        return admin_url('admin.php') . '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
-    }
-
-    public function render_config_page(): void
-    {
-        if (!current_user_can('manage_options')) {
-            wp_die(esc_html__('No tiene permisos para acceder a esta página.', 'secop-suite'));
-        }
-
-        $tabs       = self::config_tabs();
-        $active_tab = self::current_config_tab();
-        $render_tab = match ($active_tab) {
-            'registros'  => fn() => $this->render_records_tab(),
-            'depuracion' => fn() => $this->deduplicator->render_tab(),
-            'logs'       => fn() => $this->render_logs_tab(),
-            default      => fn() => $this->render_import_tab(),
-        };
-
-        include SECOP_SUITE_DIR . 'templates/admin/config-page.php';
-    }
-
-    /**
-     * Redirige admin.php?page=secop-suite-import|records|logs|depuracion a la
-     * pestaña equivalente de Configuración, conservando el resto de la query.
-     * En Registros, el antiguo parámetro de sub-vista «tab» pasa a «vista».
-     */
-    public function maybe_redirect_legacy_pages(): void
-    {
-        $page = isset($_GET['page']) && is_string($_GET['page']) ? wp_unslash($_GET['page']) : '';
-        if (!isset(self::LEGACY_PAGES[$page])) {
-            return;
-        }
-        // Solo navegación de lectura: un POST a la página antigua perdería su cuerpo,
-        // y admin_init también corre en admin-ajax.php.
-        if (wp_doing_ajax() || ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
-            return;
-        }
-
-        $new_tab = self::LEGACY_PAGES[$page];
-        $args    = wp_unslash($_GET);
-        unset($args['page']);
-
-        if ($new_tab === 'registros' && isset($args['tab'])) {
-            if (!isset($args['vista'])) {
-                $args['vista'] = $args['tab'];
-            }
-        }
-        unset($args['tab']);
-
-        wp_safe_redirect(self::config_url($new_tab, $args));
-        exit;
-    }
-
-    private function render_import_tab(): void
+    public function render_import_page(): void
     {
         if (!current_user_can('manage_options')) {
             wp_die(__('No tiene permisos para acceder a esta página.', 'secop-suite'));
@@ -556,7 +377,7 @@ final class Plugin
         include SECOP_SUITE_DIR . 'templates/admin/import-page.php';
     }
 
-    private function render_records_tab(): void
+    public function render_records_page(): void
     {
         if (!current_user_can('manage_options')) {
             wp_die(__('No tiene permisos para acceder a esta página.', 'secop-suite'));
@@ -565,15 +386,18 @@ final class Plugin
         global $wpdb;
         $table_name = $this->database->get_table_name();
 
-        // ── Sub-vista activa (el parámetro «tab» es la pestaña de Configuración) ──
-        $raw_vista = $_GET['vista'] ?? 'actual';
-        $vista     = in_array($raw_vista, ['actual', 'consulta'], true) ? $raw_vista : 'actual';
+        // ── Tab activa ──────────────────────────────────────────
+        $raw_tab = $_GET['tab'] ?? 'actual';
+        $tab     = in_array($raw_tab, ['actual', 'consulta'], true) ? $raw_tab : 'actual';
 
         $per_page     = 50;
         $current_page = max(1, intval($_GET['paged'] ?? 1));
         $offset       = ($current_page - 1) * $per_page;
 
-        // Filtros (vista "actual")
+        $total_records = $this->database->get_total_records();
+        $total_pages   = (int) ceil($total_records / $per_page);
+
+        // Filtros (tab "actual")
         $where_clauses = ['1=1'];
         $where_values  = [];
 
@@ -593,20 +417,7 @@ final class Plugin
             $where_values[]  = sanitize_text_field($_GET['estado']);
         }
 
-        $where_sql = implode(' AND ', $where_clauses);
-
-        // Total y páginas con el MISMO WHERE que el listado: antes se usaba el
-        // total sin filtrar y con un filtro activo aparecían páginas vacías.
-        if (!empty($where_values)) {
-            $total_records = (int) $wpdb->get_var($wpdb->prepare(
-                "SELECT COUNT(*) FROM {$table_name} WHERE {$where_sql}",
-                $where_values
-            ));
-        } else {
-            $total_records = $this->database->get_total_records();
-        }
-        $total_pages = (int) ceil($total_records / $per_page);
-
+        $where_sql      = implode(' AND ', $where_clauses);
         $where_values[] = $per_page;
         $where_values[] = $offset;
 
@@ -618,9 +429,9 @@ final class Plugin
         $years   = $wpdb->get_col("SELECT DISTINCT YEAR(fecha_de_firma_del_contrato) AS y FROM {$table_name} WHERE fecha_de_firma_del_contrato IS NOT NULL ORDER BY y DESC");
         $estados = $wpdb->get_col("SELECT DISTINCT estado_del_proceso FROM {$table_name} WHERE estado_del_proceso IS NOT NULL ORDER BY estado_del_proceso");
 
-        // ── Vista "consulta": datos del VIEW para la vigencia actual ──
+        // ── Tab "consulta": datos del VIEW para la vigencia actual ──
         $consulta_rows = [];
-        if ($vista === 'consulta') {
+        if ($tab === 'consulta') {
             if ($this->database->view_exists()) {
                 $view = $this->database->get_view_name();
                 // v5.9.0: vista con LEFT JOIN; vigencia por año de firma; columnas del
@@ -637,30 +448,22 @@ final class Plugin
         include SECOP_SUITE_DIR . 'templates/admin/records-page.php';
     }
 
-    /**
-     * Limpieza de logs, procesada en admin_init (antes de cualquier salida)
-     * para que el redirect funcione.
-     */
-    public function maybe_clear_logs(): void
+    public function render_logs_page(): void
     {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('No tiene permisos para acceder a esta página.', 'secop-suite'));
+        }
+
+        // Procesar limpieza de logs
         if (
             isset($_POST['secop_suite_action'], $_POST['secop_suite_logs_nonce']) &&
             $_POST['secop_suite_action'] === 'clear_logs' &&
-            ($_GET['page'] ?? '') === self::CONFIG_PAGE &&
-            self::current_config_tab() === 'logs' &&
             wp_verify_nonce($_POST['secop_suite_logs_nonce'], 'secop_suite_clear_logs') &&
             current_user_can('manage_options')
         ) {
             Logger::clear();
-            wp_safe_redirect(self::config_url('logs', ['cleared' => 1]));
+            wp_safe_redirect(admin_url('admin.php?page=secop-suite-logs&cleared=1'));
             exit;
-        }
-    }
-
-    private function render_logs_tab(): void
-    {
-        if (!current_user_can('manage_options')) {
-            wp_die(__('No tiene permisos para acceder a esta página.', 'secop-suite'));
         }
 
         $logs = Logger::read();
@@ -715,25 +518,10 @@ final class Plugin
         }
     }
 
-    /**
-     * Reprogramar el cron al guardar los ajustes de actualización automática.
-     * Antes solo se (des)programaba en activate/deactivate: activar la opción
-     * desde la página de importación no programaba nada hasta reactivar el
-     * plugin, cambiar la frecuencia nunca reprogramaba y desactivarla nunca
-     * cancelaba el evento.
-     */
-    public function reschedule_import(): void
-    {
-        wp_clear_scheduled_hook('secop_suite_scheduled_import');
-        if (get_option(SECOP_SUITE_PREFIX . 'auto_update_enabled', false)) {
-            $this->schedule_import();
-        }
-    }
-
     // ── Plugin action links ────────────────────────────────────
     public function add_action_links(array $links): array
     {
-        $settings_link = '<a href="' . esc_url(self::config_url()) . '">' . esc_html__('Configuración', 'secop-suite') . '</a>';
+        $settings_link = '<a href="' . admin_url('admin.php?page=secop-suite') . '">' . __('Configuración', 'secop-suite') . '</a>';
         array_unshift($links, $settings_link);
         return $links;
     }

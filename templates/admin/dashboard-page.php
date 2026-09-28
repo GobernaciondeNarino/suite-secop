@@ -84,7 +84,7 @@ if (!defined('ABSPATH')) {
             <div class="ss-panel ss-panel-half">
                 <h2><span class="dashicons dashicons-admin-tools"></span> <?php esc_html_e('Acciones Rápidas', 'secop-suite'); ?></h2>
                 <div class="ss-quick-actions">
-                    <a href="<?php echo esc_url(\SecopSuite\Plugin::config_url('importar')); ?>" class="ss-quick-action">
+                    <a href="<?php echo esc_url(admin_url('admin.php?page=secop-suite')); ?>" class="ss-quick-action">
                         <span class="ss-qa-icon" style="background: #e8f4fd;"><span class="dashicons dashicons-download" style="color: #2271b1;"></span></span>
                         <span class="ss-qa-text">
                             <strong><?php esc_html_e('Importar Datos', 'secop-suite'); ?></strong>
@@ -105,7 +105,7 @@ if (!defined('ABSPATH')) {
                             <small><?php esc_html_e('Crear filtro de búsqueda', 'secop-suite'); ?></small>
                         </span>
                     </a>
-                    <a href="<?php echo esc_url(\SecopSuite\Plugin::config_url('registros')); ?>" class="ss-quick-action">
+                    <a href="<?php echo esc_url(admin_url('admin.php?page=secop-suite-records')); ?>" class="ss-quick-action">
                         <span class="ss-qa-icon" style="background: #fdf4e8;"><span class="dashicons dashicons-editor-table" style="color: #dba617;"></span></span>
                         <span class="ss-qa-text">
                             <strong><?php esc_html_e('Ver Registros', 'secop-suite'); ?></strong>
