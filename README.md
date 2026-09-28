@@ -91,6 +91,10 @@ wp secop truncate --yes                            # Limpiar datos
 
 **Datos protegidos al desinstalar:** eliminar el plugin desde WordPress ya NO borra la tabla de contratos, la vista, los respaldos, las gráficas, los filtros ni la configuración. Solo se purgan si se marca «Eliminar todos los datos al desinstalar el plugin» (Configuración → Importar datos) y no hay otra copia instalada. ⚠️ Las versiones 5.17.0 y anteriores sí borran todo al pulsar «Eliminar»: no las elimine desde el administrador (ver INSTALACION.md → «Actualizar sin perder datos»).
 
+**Otras correcciones** (detectadas al probar en WordPress 7.1.2 real): el **Panel de Control** vuelve a aparecer como primera entrada del submenú (los submenús de Gráficas/Filtros se registraban antes que el menú padre y lo ocultaban); el listado de **Cards** ya no carga la vista previa ni produce un error de JavaScript; los criterios de depuración se muestran uno por línea.
+
+**Verificación**: 39 pruebas unitarias; recorrido automatizado en WordPress 7.1.2 (40 comprobaciones, 0 fallos, 0 errores de JavaScript ni avisos PHP); actualización real desde la 5.17.0 subiendo `secop-suite.zip` → WordPress ofrece «Reemplazar el actual con el subido», queda una sola copia y se conservan contratos y gráficas.
+
 ### v5.17.0 — Depuración de base de datos, APIs sin duplicados y diccionario de datos (2026-09-25)
 
 **Nuevo módulo «Depuración BD»** (SECOP Suite → Depuración BD, solo administradores):
