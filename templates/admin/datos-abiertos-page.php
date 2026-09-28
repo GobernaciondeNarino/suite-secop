@@ -183,7 +183,7 @@ if (!defined('ABSPATH')) {
 
     <h2><?php esc_html_e('Deduplicación de las APIs', 'secop-suite'); ?></h2>
     <p><?php esc_html_e(
-        'La vista vista_secop_sysman cruza cada contrato con todos sus asientos presupuestales, por lo que un contrato con varios asientos aparece varias veces en la vista. Desde la versión 5.17.0 los endpoints /consulta eliminan primero las filas repetidas (DISTINCT, sin los identificadores internos de cada tabla) y, por defecto, entregan una sola fila por contrato con los valores presupuestales sumados. Los endpoints /contracts y /export leen la tabla de contratos, cuyo índice único impide que un número de contrato se repita. Para limpiar duplicados en la propia base de datos use SECOP Suite > Depuración BD.',
+        'La vista vista_secop_sysman cruza cada contrato con todos sus asientos presupuestales, por lo que un contrato con varios asientos aparece varias veces en la vista. Desde la versión 5.17.0 los endpoints /consulta eliminan primero las filas repetidas (DISTINCT, sin los identificadores internos de cada tabla) y, por defecto, entregan una sola fila por contrato con los valores presupuestales sumados. Los endpoints /contracts y /export leen la tabla de contratos, cuyo índice único impide que un número de contrato se repita. Para limpiar duplicados en la propia base de datos use SECOP Suite > Configuración > Depuración BD.',
         'secop-suite'
     ); ?></p>
 

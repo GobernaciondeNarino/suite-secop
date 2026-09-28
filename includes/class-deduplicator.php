@@ -28,7 +28,8 @@ if (!defined('ABSPATH')) {
 
 final class Deduplicator
 {
-    private const PAGE             = 'secop-suite-depuracion';
+    /** Pestaña de la página Configuración (Plugin::CONFIG_PAGE) que aloja el módulo. */
+    private const TAB              = 'depuracion';
     private const NONCE            = 'secop_dedup';
     private const LOCK             = 'secop_suite_dedup_lock';
     private const BACKUP_VERSION   = '1';
@@ -42,7 +43,6 @@ final class Deduplicator
     public function __construct(Database $db)
     {
         $this->db = $db;
-        add_action('admin_menu', [$this, 'register_menu']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_assets']);
         foreach (['analyze', 'run', 'restore', 'purge', 'unique_index'] as $action) {
             add_action('wp_ajax_secop_dedup_' . $action, [$this, 'ajax_' . $action]);
@@ -601,23 +601,14 @@ final class Deduplicator
             : ['ok' => true, 'message' => __('Índice único creado.', 'secop-suite')];
     }
 
-    // ── Admin: menú, assets y página ───────────────────────────
-
-    public function register_menu(): void
-    {
-        add_submenu_page(
-            'secop-suite',
-            __('Depuración BD', 'secop-suite'),
-            __('Depuración BD', 'secop-suite'),
-            'manage_options',
-            self::PAGE,
-            [$this, 'render_page']
-        );
-    }
+    // ── Admin: assets y pestaña ────────────────────────────────
+    // El módulo ya no registra su propio submenú (se registraba antes que
+    // el menú padre y el enlace quedaba roto); es la pestaña «Depuración BD» de
+    // SECOP Suite > Configuración, que Plugin::render_config_page() delega aquí.
 
     public function enqueue_assets(string $hook): void
     {
-        if (!str_contains($hook, self::PAGE)) {
+        if (!str_contains($hook, Plugin::CONFIG_PAGE) || Plugin::current_config_tab() !== self::TAB) {
             return;
         }
         wp_enqueue_script('secop-suite-dedup', SECOP_SUITE_URL . 'assets/js/admin-depuracion.js', ['jquery'], SECOP_SUITE_VERSION, true);
@@ -657,7 +648,8 @@ final class Deduplicator
         ]);
     }
 
-    public function render_page(): void
+    /** Contenido de la pestaña «Depuración BD» (sin envoltorio .wrap ni h1). */
+    public function render_tab(): void
     {
         if (!current_user_can('manage_options')) {
             wp_die(esc_html__('No tiene permisos para acceder a esta página.', 'secop-suite'));

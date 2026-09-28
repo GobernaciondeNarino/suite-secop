@@ -1894,7 +1894,8 @@
 .ss-dedup-checks li.is-warn { border-left-color: #dba617; background: #fcf9e8; }
 .ss-dedup-checks li .dashicons { position: absolute; left: 10px; top: 8px; color: #00a32a; }
 .ss-dedup-checks li.is-warn .dashicons { color: #b26200; }
-.ss-dedup-preset { display: block; margin-bottom: 6px; }
+.ss-dedup-preset,
+.ss-dedup .form-table td fieldset label.ss-dedup-preset { display: block; margin-bottom: 6px; }
 .ss-dedup-custom { margin-top: 10px; }
 .ss-dedup-custom > summary { cursor: pointer; font-weight: 600; }
 .ss-dedup-columns {
@@ -1944,3 +1945,18 @@
     .ss-dedup .form-table select { width: 100%; }
     .ss-dedup-columns { grid-template-columns: 1fr; }
 }
+
+/* ==========================================================================
+   Configuración: pestañas Importar · Registros · Depuración · Logs
+   ========================================================================== */
+.ss-config .nav-tab-wrapper { margin-bottom: 20px; }
+.ss-config-section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 12px;
+}
+.ss-config-section-title .dashicons { font-size: 22px; width: 22px; height: 22px; }
+.ss-config-subviews { margin: 0 0 12px; }

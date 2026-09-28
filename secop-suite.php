@@ -96,6 +96,20 @@ spl_autoload_register(static function (string $class): void {
 // ─── Clase principal ───────────────────────────────────────────
 final class Plugin
 {
+    /** Slug de la página «Configuración» (pestañas Importar · Registros · Depuración · Logs). */
+    public const CONFIG_PAGE = 'secop-suite-config';
+
+    /**
+     * Páginas sueltas antiguas (antes de agruparlas en pestañas) → pestaña equivalente de Configuración.
+     * Se conservan para redirigir marcadores y enlaces antiguos.
+     */
+    private const LEGACY_PAGES = [
+        'secop-suite-import'     => 'importar',
+        'secop-suite-records'    => 'registros',
+        'secop-suite-depuracion' => 'depuracion',
+        'secop-suite-logs'       => 'logs',
+    ];
+
     private static ?Plugin $instance = null;
     private Database $database;
     private Importer $importer;
@@ -142,7 +156,10 @@ final class Plugin
         register_deactivation_hook(__FILE__, [$this, 'deactivate']);
 
         add_action('init', [$this, 'load_textdomain']);
-        add_action('admin_menu', [$this, 'register_admin_menu']);
+        // Prioridad 9: antes de _add_post_type_submenus (10). Si los CPT con
+        // show_in_menu='secop-suite' se añaden primero, WordPress ya no crea la
+        // entrada del panel en el submenú y el panel queda inaccesible desde el menú.
+        add_action('admin_menu', [$this, 'register_admin_menu'], 9);
         add_action('admin_menu', [$this, 'sort_submenus'], 9999);
         add_action('admin_init', [$this, 'register_settings']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
@@ -157,8 +174,17 @@ final class Plugin
         add_action('add_option_' . SECOP_SUITE_PREFIX . 'auto_update_enabled', [$this, 'reschedule_import'], 10, 0);
 
         // Procesar el POST de limpieza de logs ANTES de que el admin envíe salida
-        // (hacerlo dentro de render_logs_page provocaba "headers already sent").
+        // (hacerlo dentro del render de la pestaña Logs provocaba "headers already sent").
         add_action('admin_init', [$this, 'maybe_clear_logs']);
+
+        // Redirección de las páginas sueltas antiguas a su pestaña de Configuración.
+        // Como esos slugs ya no están registrados, WordPress deniega el acceso en
+        // wp-admin/includes/menu.php ANTES de admin_init y dispara
+        // «admin_page_access_denied» justo antes de wp_die(): ese es el punto real
+        // de redirección. El enganche en admin_init queda como respaldo por si otro
+        // código registrara alguno de esos slugs.
+        add_action('admin_page_access_denied', [$this, 'maybe_redirect_legacy_pages']);
+        add_action('admin_init', [$this, 'maybe_redirect_legacy_pages'], 1);
 
         // Background import hook
         add_action('secop_suite_run_import', [$this->importer, 'run_background']);
@@ -280,31 +306,28 @@ final class Plugin
             21
         );
 
+        // Primera entrada del submenú: el panel (mismo slug que el menú padre).
         add_submenu_page(
             'secop-suite',
-            __('Importar Datos', 'secop-suite'),
-            __('Importar Datos', 'secop-suite'),
+            __('Panel de Control', 'secop-suite'),
+            __('Panel de Control', 'secop-suite'),
             'manage_options',
-            'secop-suite-import',
-            [$this, 'render_import_page']
+            'secop-suite',
+            [$this, 'render_dashboard_page']
         );
 
+        // Importar datos, Registros, Depuración BD y Logs se agrupan como
+        // pestañas de una sola página. Se registra aquí (después de add_menu_page)
+        // para que el hookname tenga el padre correcto; antes Depuración BD se
+        // registraba desde su propio admin_menu, ANTES que el menú padre, y en
+        // producción su enlace apuntaba a /wp-admin/secop-suite-depuracion (404).
         add_submenu_page(
             'secop-suite',
-            __('Registros', 'secop-suite'),
-            __('Registros', 'secop-suite'),
+            __('Configuración', 'secop-suite'),
+            __('Configuración', 'secop-suite'),
             'manage_options',
-            'secop-suite-records',
-            [$this, 'render_records_page']
-        );
-
-        add_submenu_page(
-            'secop-suite',
-            __('Logs', 'secop-suite'),
-            __('Logs', 'secop-suite'),
-            'manage_options',
-            'secop-suite-logs',
-            [$this, 'render_logs_page']
+            self::CONFIG_PAGE,
+            [$this, 'render_config_page']
         );
 
         add_submenu_page(
@@ -332,12 +355,15 @@ final class Plugin
         global $submenu;
         if (empty($submenu['secop-suite'])) return;
         $items = $submenu['secop-suite'];
+        // El panel (slug del menú padre) va siempre primero; el resto, alfabético.
+        $panel = array_values(array_filter($items, static fn($i) => ($i[2] ?? '') === 'secop-suite'));
+        $items = array_filter($items, static fn($i) => ($i[2] ?? '') !== 'secop-suite');
         usort($items, static function ($a, $b) {
             $ta = html_entity_decode(wp_strip_all_tags($a[0]));
             $tb = html_entity_decode(wp_strip_all_tags($b[0]));
             return strcasecmp($ta, $tb);
         });
-        $submenu['secop-suite'] = array_values($items);
+        $submenu['secop-suite'] = array_merge($panel, array_values($items));
     }
 
     // ── Registro de configuraciones ────────────────────────────
@@ -429,7 +455,94 @@ final class Plugin
         include SECOP_SUITE_DIR . 'templates/admin/dashboard-page.php';
     }
 
-    public function render_import_page(): void
+    // ── Página «Configuración» con pestañas ────────────────────
+
+    /**
+     * Pestañas de la página Configuración, en orden (la primera es la de defecto).
+     *
+     * @return array<string,string> slug => etiqueta
+     */
+    public static function config_tabs(): array
+    {
+        return [
+            'importar'   => __('Importar datos', 'secop-suite'),
+            'registros'  => __('Registros', 'secop-suite'),
+            'depuracion' => __('Depuración BD', 'secop-suite'),
+            'logs'       => __('Logs', 'secop-suite'),
+        ];
+    }
+
+    /** Pestaña solicitada en la URL, validada contra la lista blanca. */
+    public static function current_config_tab(): string
+    {
+        $tabs = array_keys(self::config_tabs());
+        $raw  = isset($_GET['tab']) && is_string($_GET['tab']) ? sanitize_key(wp_unslash($_GET['tab'])) : '';
+        return in_array($raw, $tabs, true) ? $raw : $tabs[0];
+    }
+
+    /**
+     * URL de una pestaña de Configuración (sin escapar: usar esc_url() al imprimir).
+     *
+     * @param array<string,scalar> $args Parámetros adicionales de la query.
+     */
+    public static function config_url(string $tab = 'importar', array $args = []): string
+    {
+        $query = array_merge(['page' => self::CONFIG_PAGE, 'tab' => $tab], $args);
+        // http_build_query codifica claves y valores (también arrays anidados).
+        return admin_url('admin.php') . '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
+    }
+
+    public function render_config_page(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('No tiene permisos para acceder a esta página.', 'secop-suite'));
+        }
+
+        $tabs       = self::config_tabs();
+        $active_tab = self::current_config_tab();
+        $render_tab = match ($active_tab) {
+            'registros'  => fn() => $this->render_records_tab(),
+            'depuracion' => fn() => $this->deduplicator->render_tab(),
+            'logs'       => fn() => $this->render_logs_tab(),
+            default      => fn() => $this->render_import_tab(),
+        };
+
+        include SECOP_SUITE_DIR . 'templates/admin/config-page.php';
+    }
+
+    /**
+     * Redirige admin.php?page=secop-suite-import|records|logs|depuracion a la
+     * pestaña equivalente de Configuración, conservando el resto de la query.
+     * En Registros, el antiguo parámetro de sub-vista «tab» pasa a «vista».
+     */
+    public function maybe_redirect_legacy_pages(): void
+    {
+        $page = isset($_GET['page']) && is_string($_GET['page']) ? wp_unslash($_GET['page']) : '';
+        if (!isset(self::LEGACY_PAGES[$page])) {
+            return;
+        }
+        // Solo navegación de lectura: un POST a la página antigua perdería su cuerpo,
+        // y admin_init también corre en admin-ajax.php.
+        if (wp_doing_ajax() || ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
+            return;
+        }
+
+        $new_tab = self::LEGACY_PAGES[$page];
+        $args    = wp_unslash($_GET);
+        unset($args['page']);
+
+        if ($new_tab === 'registros' && isset($args['tab'])) {
+            if (!isset($args['vista'])) {
+                $args['vista'] = $args['tab'];
+            }
+        }
+        unset($args['tab']);
+
+        wp_safe_redirect(self::config_url($new_tab, $args));
+        exit;
+    }
+
+    private function render_import_tab(): void
     {
         if (!current_user_can('manage_options')) {
             wp_die(__('No tiene permisos para acceder a esta página.', 'secop-suite'));
@@ -443,7 +556,7 @@ final class Plugin
         include SECOP_SUITE_DIR . 'templates/admin/import-page.php';
     }
 
-    public function render_records_page(): void
+    private function render_records_tab(): void
     {
         if (!current_user_can('manage_options')) {
             wp_die(__('No tiene permisos para acceder a esta página.', 'secop-suite'));
@@ -452,15 +565,15 @@ final class Plugin
         global $wpdb;
         $table_name = $this->database->get_table_name();
 
-        // ── Tab activa ──────────────────────────────────────────
-        $raw_tab = $_GET['tab'] ?? 'actual';
-        $tab     = in_array($raw_tab, ['actual', 'consulta'], true) ? $raw_tab : 'actual';
+        // ── Sub-vista activa (el parámetro «tab» es la pestaña de Configuración) ──
+        $raw_vista = $_GET['vista'] ?? 'actual';
+        $vista     = in_array($raw_vista, ['actual', 'consulta'], true) ? $raw_vista : 'actual';
 
         $per_page     = 50;
         $current_page = max(1, intval($_GET['paged'] ?? 1));
         $offset       = ($current_page - 1) * $per_page;
 
-        // Filtros (tab "actual")
+        // Filtros (vista "actual")
         $where_clauses = ['1=1'];
         $where_values  = [];
 
@@ -505,9 +618,9 @@ final class Plugin
         $years   = $wpdb->get_col("SELECT DISTINCT YEAR(fecha_de_firma_del_contrato) AS y FROM {$table_name} WHERE fecha_de_firma_del_contrato IS NOT NULL ORDER BY y DESC");
         $estados = $wpdb->get_col("SELECT DISTINCT estado_del_proceso FROM {$table_name} WHERE estado_del_proceso IS NOT NULL ORDER BY estado_del_proceso");
 
-        // ── Tab "consulta": datos del VIEW para la vigencia actual ──
+        // ── Vista "consulta": datos del VIEW para la vigencia actual ──
         $consulta_rows = [];
-        if ($tab === 'consulta') {
+        if ($vista === 'consulta') {
             if ($this->database->view_exists()) {
                 $view = $this->database->get_view_name();
                 // v5.9.0: vista con LEFT JOIN; vigencia por año de firma; columnas del
@@ -533,17 +646,18 @@ final class Plugin
         if (
             isset($_POST['secop_suite_action'], $_POST['secop_suite_logs_nonce']) &&
             $_POST['secop_suite_action'] === 'clear_logs' &&
-            ($_GET['page'] ?? '') === 'secop-suite-logs' &&
+            ($_GET['page'] ?? '') === self::CONFIG_PAGE &&
+            self::current_config_tab() === 'logs' &&
             wp_verify_nonce($_POST['secop_suite_logs_nonce'], 'secop_suite_clear_logs') &&
             current_user_can('manage_options')
         ) {
             Logger::clear();
-            wp_safe_redirect(admin_url('admin.php?page=secop-suite-logs&cleared=1'));
+            wp_safe_redirect(self::config_url('logs', ['cleared' => 1]));
             exit;
         }
     }
 
-    public function render_logs_page(): void
+    private function render_logs_tab(): void
     {
         if (!current_user_can('manage_options')) {
             wp_die(__('No tiene permisos para acceder a esta página.', 'secop-suite'));
@@ -619,7 +733,7 @@ final class Plugin
     // ── Plugin action links ────────────────────────────────────
     public function add_action_links(array $links): array
     {
-        $settings_link = '<a href="' . admin_url('admin.php?page=secop-suite') . '">' . __('Configuración', 'secop-suite') . '</a>';
+        $settings_link = '<a href="' . esc_url(self::config_url()) . '">' . esc_html__('Configuración', 'secop-suite') . '</a>';
         array_unshift($links, $settings_link);
         return $links;
     }
