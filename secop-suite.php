@@ -146,6 +146,15 @@ final class Plugin
         add_filter('cron_schedules', [$this, 'add_cron_schedules']);
         add_action('secop_suite_scheduled_import', [$this->importer, 'run_scheduled']);
 
+        // Reprogramar el cron cuando se guardan los ajustes de auto-actualización.
+        add_action('update_option_' . SECOP_SUITE_PREFIX . 'auto_update_enabled', [$this, 'reschedule_import'], 10, 0);
+        add_action('update_option_' . SECOP_SUITE_PREFIX . 'auto_update_frequency', [$this, 'reschedule_import'], 10, 0);
+        add_action('add_option_' . SECOP_SUITE_PREFIX . 'auto_update_enabled', [$this, 'reschedule_import'], 10, 0);
+
+        // Procesar el POST de limpieza de logs ANTES de que el admin envíe salida
+        // (hacerlo dentro de render_logs_page provocaba "headers already sent").
+        add_action('admin_init', [$this, 'maybe_clear_logs']);
+
         // Background import hook
         add_action('secop_suite_run_import', [$this->importer, 'run_background']);
 
@@ -441,9 +450,6 @@ final class Plugin
         $current_page = max(1, intval($_GET['paged'] ?? 1));
         $offset       = ($current_page - 1) * $per_page;
 
-        $total_records = $this->database->get_total_records();
-        $total_pages   = (int) ceil($total_records / $per_page);
-
         // Filtros (tab "actual")
         $where_clauses = ['1=1'];
         $where_values  = [];
@@ -464,7 +470,20 @@ final class Plugin
             $where_values[]  = sanitize_text_field($_GET['estado']);
         }
 
-        $where_sql      = implode(' AND ', $where_clauses);
+        $where_sql = implode(' AND ', $where_clauses);
+
+        // Total y páginas con el MISMO WHERE que el listado: antes se usaba el
+        // total sin filtrar y con un filtro activo aparecían páginas vacías.
+        if (!empty($where_values)) {
+            $total_records = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$table_name} WHERE {$where_sql}",
+                $where_values
+            ));
+        } else {
+            $total_records = $this->database->get_total_records();
+        }
+        $total_pages = (int) ceil($total_records / $per_page);
+
         $where_values[] = $per_page;
         $where_values[] = $offset;
 
@@ -495,22 +514,29 @@ final class Plugin
         include SECOP_SUITE_DIR . 'templates/admin/records-page.php';
     }
 
-    public function render_logs_page(): void
+    /**
+     * Limpieza de logs, procesada en admin_init (antes de cualquier salida)
+     * para que el redirect funcione.
+     */
+    public function maybe_clear_logs(): void
     {
-        if (!current_user_can('manage_options')) {
-            wp_die(__('No tiene permisos para acceder a esta página.', 'secop-suite'));
-        }
-
-        // Procesar limpieza de logs
         if (
             isset($_POST['secop_suite_action'], $_POST['secop_suite_logs_nonce']) &&
             $_POST['secop_suite_action'] === 'clear_logs' &&
+            ($_GET['page'] ?? '') === 'secop-suite-logs' &&
             wp_verify_nonce($_POST['secop_suite_logs_nonce'], 'secop_suite_clear_logs') &&
             current_user_can('manage_options')
         ) {
             Logger::clear();
             wp_safe_redirect(admin_url('admin.php?page=secop-suite-logs&cleared=1'));
             exit;
+        }
+    }
+
+    public function render_logs_page(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('No tiene permisos para acceder a esta página.', 'secop-suite'));
         }
 
         $logs = Logger::read();
@@ -562,6 +588,21 @@ final class Plugin
         $frequency = get_option(SECOP_SUITE_PREFIX . 'auto_update_frequency', 'daily');
         if (!wp_next_scheduled('secop_suite_scheduled_import')) {
             wp_schedule_event(time(), $frequency, 'secop_suite_scheduled_import');
+        }
+    }
+
+    /**
+     * Reprogramar el cron al guardar los ajustes de actualización automática.
+     * Antes solo se (des)programaba en activate/deactivate: activar la opción
+     * desde la página de importación no programaba nada hasta reactivar el
+     * plugin, cambiar la frecuencia nunca reprogramaba y desactivarla nunca
+     * cancelaba el evento.
+     */
+    public function reschedule_import(): void
+    {
+        wp_clear_scheduled_hook('secop_suite_scheduled_import');
+        if (get_option(SECOP_SUITE_PREFIX . 'auto_update_enabled', false)) {
+            $this->schedule_import();
         }
     }
 
