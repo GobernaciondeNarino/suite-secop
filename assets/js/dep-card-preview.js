@@ -279,8 +279,10 @@
         // Editar columna/operador/valor de un filtro refresca la vista previa.
         $(document).on('change keyup', '#dep-filters-rows .dep-filter-field, #dep-filters-rows .dep-filter-operator, #dep-filters-rows .dep-filter-value', debouncedRefresh);
 
-        // Refresco inicial.
-        refresh();
+        // Refresco inicial (solo si la pantalla tiene el contenedor de la vista previa).
+        if ($('#ss-dep-preview-render').length) {
+            refresh();
+        }
     });
 
 })(jQuery);

@@ -156,7 +156,10 @@ final class Plugin
         register_deactivation_hook(__FILE__, [$this, 'deactivate']);
 
         add_action('init', [$this, 'load_textdomain']);
-        add_action('admin_menu', [$this, 'register_admin_menu']);
+        // Prioridad 9: antes de _add_post_type_submenus (10). Si los CPT con
+        // show_in_menu='secop-suite' se añaden primero, WordPress ya no crea la
+        // entrada del panel en el submenú y el panel queda inaccesible desde el menú.
+        add_action('admin_menu', [$this, 'register_admin_menu'], 9);
         add_action('admin_menu', [$this, 'sort_submenus'], 9999);
         add_action('admin_init', [$this, 'register_settings']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
@@ -303,6 +306,16 @@ final class Plugin
             21
         );
 
+        // Primera entrada del submenú: el panel (mismo slug que el menú padre).
+        add_submenu_page(
+            'secop-suite',
+            __('Panel de Control', 'secop-suite'),
+            __('Panel de Control', 'secop-suite'),
+            'manage_options',
+            'secop-suite',
+            [$this, 'render_dashboard_page']
+        );
+
         // Importar datos, Registros, Depuración BD y Logs se agrupan como
         // pestañas de una sola página. Se registra aquí (después de add_menu_page)
         // para que el hookname tenga el padre correcto; antes Depuración BD se
@@ -342,12 +355,15 @@ final class Plugin
         global $submenu;
         if (empty($submenu['secop-suite'])) return;
         $items = $submenu['secop-suite'];
+        // El panel (slug del menú padre) va siempre primero; el resto, alfabético.
+        $panel = array_values(array_filter($items, static fn($i) => ($i[2] ?? '') === 'secop-suite'));
+        $items = array_filter($items, static fn($i) => ($i[2] ?? '') !== 'secop-suite');
         usort($items, static function ($a, $b) {
             $ta = html_entity_decode(wp_strip_all_tags($a[0]));
             $tb = html_entity_decode(wp_strip_all_tags($b[0]));
             return strcasecmp($ta, $tb);
         });
-        $submenu['secop-suite'] = array_values($items);
+        $submenu['secop-suite'] = array_merge($panel, array_values($items));
     }
 
     // ── Registro de configuraciones ────────────────────────────
