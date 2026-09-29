@@ -37,8 +37,12 @@ final class Config_Backup
     private const VERSION_OPTION = 'secop_respaldos_ultima_version';
     private const LOCK           = 'secop_respaldos_lock';
     private const POST_TYPES     = ['secop_chart', 'secop_filter', 'secop_dep_card'];
-    private const POST_STATUSES  = ['publish', 'draft', 'pending', 'private', 'future', 'trash'];
-    private const SKIP_META      = ['_edit_lock', '_edit_last', '_wp_old_slug', '_wp_old_date'];
+    /** Sin 'trash': restaurar un elemento a la papelera podría hacer que WordPress lo borre definitivamente. */
+    private const POST_STATUSES  = ['publish', 'draft', 'pending', 'private', 'future'];
+    private const SKIP_META      = [
+        '_edit_lock', '_edit_last', '_wp_old_slug', '_wp_old_date',
+        '_wp_trash_meta_status', '_wp_trash_meta_time', '_wp_desired_post_slug',
+    ];
     private const FAIL_BACKOFF   = 'secop_respaldos_fallo';
     private const SHORTCODE_RE   = '/\[(secop_[a-z_]+|sdv_chart)\b([^\]]*)\]/i';
     /** Shortcodes que apuntan a un elemento guardado: etiqueta => [atributo, tipo de post]. */
@@ -46,7 +50,8 @@ final class Config_Backup
         'secop_chart'     => ['id', 'secop_chart'],
         'sdv_chart'       => ['id', 'secop_chart'],
         'secop_filter'    => ['id', 'secop_filter'],
-        'secop_dep_chart' => ['card', 'secop_dep_card'],
+        'secop_dep_chart'    => ['card', 'secop_dep_card'],
+        'secop_dep_analisis' => ['card', 'secop_dep_card'],
     ];
     /**
      * Opciones que describen los DATOS (no la configuración) o el esquema: no se
@@ -56,7 +61,11 @@ final class Config_Backup
         'secop_suite_db_version', 'secop_suite_total_records', 'secop_suite_last_import',
         'secop_suite_import_progress', 'secop_suite_import_running', 'secop_suite_view_checked',
         'secop_suite_dedup_backup_version', 'secop_suite_log_dir_suffix',
+        // Nunca se activa la purga al desinstalar desde un respaldo: solo a mano.
+        'secop_suite_delete_data_on_uninstall',
     ];
+    /** No se exportan: el sufijo aleatorio es lo que oculta la carpeta de logs. */
+    private const COLLECT_SKIP_OPTIONS = ['secop_suite_log_dir_suffix'];
 
     private Database $db;
     private bool $table_ready = false;
@@ -117,7 +126,7 @@ final class Config_Backup
             $wpdb->esc_like('secop_suite_') . '%'
         )) ?: [];
         foreach ($names as $name) {
-            if (!str_contains($name, '_lock')) {
+            if (!str_contains($name, '_lock') && !in_array($name, self::COLLECT_SKIP_OPTIONS, true)) {
                 $options[$name] = get_option($name);
             }
         }
@@ -128,7 +137,7 @@ final class Config_Backup
         $types = "'" . implode("','", self::POST_TYPES) . "'";
         $ids   = $wpdb->get_col(
             "SELECT ID FROM {$wpdb->posts} WHERE post_type IN ({$types})
-             AND post_status NOT IN ('auto-draft','inherit') ORDER BY ID"
+             AND post_status NOT IN ('auto-draft','inherit','trash') ORDER BY ID"
         ) ?: [];
         foreach ($ids as $id) {
             $p = get_post((int) $id);
@@ -224,7 +233,10 @@ final class Config_Backup
         return $id;
     }
 
-    /** Conserva las últimas KEEP_AUTO instantáneas automáticas (las manuales nunca se borran solas). */
+    /**
+     * Conserva las últimas KEEP_AUTO instantáneas rotativas. Las manuales y las de
+     * la primera carga de cada versión (is_auto = 0) nunca se borran solas.
+     */
     private function prune(): void
     {
         global $wpdb;
@@ -247,14 +259,17 @@ final class Config_Backup
             return;
         }
         set_transient(self::LOCK, 1, MINUTE_IN_SECONDS);
+        // La espera se fija ANTES: si la petición muere (memoria, tiempo), no se
+        // reintenta en cada visita sino dentro de una hora.
+        set_transient(self::FAIL_BACKOFF, 1, HOUR_IN_SECONDS);
         $reason = $last !== ''
             ? sprintf(__('Automático: primera carga tras actualizar de %1$s a %2$s', 'secop-suite'), $last, SECOP_SUITE_VERSION)
             : sprintf(__('Automático: primera carga de la versión %s', 'secop-suite'), SECOP_SUITE_VERSION);
-        if ($this->snapshot($reason) > 0) {
+        // Se conserva siempre (no entra en la rotación): es el estado previo a la versión nueva.
+        if ($this->snapshot($reason, false) > 0) {
+            delete_transient(self::FAIL_BACKOFF);
             // Autocargada: evita una consulta extra en cada petición.
             update_option(self::VERSION_OPTION, SECOP_SUITE_VERSION, true);
-        } else {
-            set_transient(self::FAIL_BACKOFF, 1, HOUR_IN_SECONDS); // reintentar en una hora, sin llenar el log
         }
         delete_transient(self::LOCK);
     }
@@ -407,20 +422,31 @@ final class Config_Backup
      * Restaura una instantánea. Las gráficas, filtros y cards conservan su ID
      * (si el ID está libre se recrea con el mismo número), de modo que los
      * shortcodes de las páginas vuelven a funcionar sin editarlas. No borra
-     * nada que no esté en el respaldo. Antes crea un respaldo del estado actual.
+     * nada que no esté en el respaldo. Antes crea un respaldo del estado actual
+     * y, si no puede crearlo, no restaura nada.
+     *
+     * $trusted = true para las instantáneas guardadas en este mismo servidor. Un
+     * archivo subido (false) no puede restaurar la vista, sus consultas
+     * personalizadas pasan por la misma validación que el editor de gráficas y
+     * solo actualiza elementos existentes si procede de este mismo sitio.
      *
      * @return array{ok:bool,valido:bool,antes:int,opciones:int,actualizados:int,creados:int,ids_cambiados:array<int,int>,vista:bool,errores:array<int,string>}
      */
-    public function restore(array $data, bool $restore_view): array
+    public function restore(array $data, bool $restore_view, bool $trusted = true): array
     {
+        global $wpdb;
         $res = ['ok' => false, 'valido' => false, 'antes' => 0, 'opciones' => 0, 'actualizados' => 0, 'creados' => 0, 'ids_cambiados' => [], 'vista' => false, 'errores' => []];
         if (!$this->is_valid($data)) {
             $res['errores'][] = __('El archivo no es un respaldo válido de SECOP Suite.', 'secop-suite');
             return $res;
         }
-        $res['valido'] = true;
 
         $res['antes'] = $this->snapshot(__('Automático: antes de restaurar un respaldo', 'secop-suite'));
+        if ($res['antes'] === 0) {
+            $res['errores'][] = __('No se pudo guardar el estado actual como respaldo; no se restauró nada.', 'secop-suite');
+            return $res;
+        }
+        $res['valido'] = true;
 
         foreach ($data['opciones'] as $name => $value) {
             if (!is_string($name) || !str_starts_with($name, 'secop_suite_') || str_contains($name, '_lock')
@@ -431,13 +457,21 @@ final class Config_Backup
             $res['opciones']++;
         }
 
+        // Un archivo de otro sitio no sobrescribe elementos de este que tengan el mismo ID.
+        $same_site = $trusted
+            || (($data['sitio'] ?? '') === home_url('/') && ($data['prefijo'] ?? '') === $wpdb->prefix);
+        if ($trusted) {
+            kses_remove_filters(); // contenido guardado por este mismo sitio: sin reescribir «&» ni «>»
+        }
         foreach ($data['posts'] as $p) {
-            if (!is_array($p) || !in_array($p['post_type'] ?? '', self::POST_TYPES, true)) {
+            if (!is_array($p) || !in_array($p['post_type'] ?? '', self::POST_TYPES, true)
+                || ($p['post_status'] ?? '') === 'trash') {
                 continue;
             }
             $old_id  = (int) ($p['ID'] ?? 0);
+            $title   = (string) ($p['post_title'] ?? $old_id);
             $status  = in_array($p['post_status'] ?? '', self::POST_STATUSES, true) ? $p['post_status'] : 'draft';
-            $postarr = wp_slash([
+            $postarr = [
                 'post_type'    => $p['post_type'],
                 'post_title'   => (string) ($p['post_title'] ?? ''),
                 'post_status'  => $status,
@@ -445,10 +479,16 @@ final class Config_Backup
                 'post_content' => (string) ($p['post_content'] ?? ''),
                 'post_excerpt' => (string) ($p['post_excerpt'] ?? ''),
                 'menu_order'   => (int) ($p['menu_order'] ?? 0),
-            ]);
+            ];
+            if (!empty($p['post_date'])) {
+                $postarr['post_date']     = (string) $p['post_date'];
+                $postarr['post_date_gmt'] = (string) ($p['post_date_gmt'] ?? '');
+                $postarr['edit_date']     = true; // conserva la fecha también en borradores
+            }
+            $postarr = wp_slash($postarr);
 
             $existing = $old_id > 0 ? get_post($old_id) : null;
-            if ($existing && $existing->post_type === $p['post_type']) {
+            if ($existing && $same_site && $existing->post_type === $p['post_type']) {
                 $postarr['ID'] = $old_id;
                 $result        = wp_update_post($postarr, true);
                 $target        = is_wp_error($result) ? 0 : $old_id;
@@ -456,10 +496,6 @@ final class Config_Backup
             } else {
                 if (!$existing && $old_id > 0) {
                     $postarr['import_id'] = $old_id; // conserva el ID si está libre
-                }
-                if (!empty($p['post_date'])) {
-                    $postarr['post_date']     = (string) $p['post_date'];
-                    $postarr['post_date_gmt'] = (string) ($p['post_date_gmt'] ?? '');
                 }
                 $result = wp_insert_post($postarr, true);
                 $target = is_wp_error($result) ? 0 : (int) $result;
@@ -471,7 +507,7 @@ final class Config_Backup
                 }
             }
             if (!$target) {
-                $res['errores'][] = sprintf(__('No se pudo restaurar «%s».', 'secop-suite'), (string) ($p['post_title'] ?? $old_id));
+                $res['errores'][] = sprintf(__('No se pudo restaurar «%s».', 'secop-suite'), $title);
                 continue;
             }
 
@@ -481,14 +517,22 @@ final class Config_Backup
                 }
                 delete_post_meta($target, $key);
                 foreach ((array) $values as $value) {
+                    if (!$trusted && $key === '_secop_chart_config') {
+                        $value = $this->validate_chart_config($value, $title, $res['errores']);
+                    }
                     add_post_meta($target, $key, wp_slash($value));
                 }
             }
         }
+        if ($trusted) {
+            kses_init();
+        }
 
         $this->sync_cron();
 
-        if ($restore_view && !empty($data['vista']['sql'])) {
+        // La vista solo se restaura desde instantáneas de este servidor: un archivo
+        // podría publicar cualquier tabla a través de los endpoints públicos.
+        if ($restore_view && $trusted && !empty($data['vista']['sql'])) {
             $res['vista'] = $this->restore_view((string) $data['vista']['sql']);
             if (!$res['vista']) {
                 $res['errores'][] = __('No se pudo restaurar la vista de Contratación (definición no válida o sin permisos).', 'secop-suite');
@@ -499,10 +543,32 @@ final class Config_Backup
         wp_cache_delete('secop_cols_' . md5($this->db->get_view_name()), 'secop_suite');
         $res['ok'] = empty($res['errores']);
         Logger::warning(sprintf(
-            'Respaldo de configuración restaurado: %d opciones, %d actualizados, %d creados, %d IDs cambiados, vista %s (usuario %d)',
+            'Respaldo de configuración restaurado (%s): %d opciones, %d actualizados, %d creados, %d IDs cambiados, vista %s (usuario %d)',
+            $trusted ? 'instantánea local' : 'archivo',
             $res['opciones'], $res['actualizados'], $res['creados'], count($res['ids_cambiados']), $res['vista'] ? 'sí' : 'no', get_current_user_id()
         ));
         return $res;
+    }
+
+    /**
+     * Consulta personalizada de una gráfica que viene de un archivo: se valida
+     * igual que al guardarla en el editor (solo SELECT sobre tablas permitidas),
+     * porque los endpoints públicos la ejecutan. Si no es válida, se descarta.
+     *
+     * @param array<int,string> $errores
+     */
+    private function validate_chart_config(mixed $config, string $title, array &$errores): mixed
+    {
+        if (!is_array($config) || empty($config['custom_query'])) {
+            return $config;
+        }
+        $raw   = (string) $config['custom_query'];
+        $clean = wp_unslash(Plugin::get_instance()->visualizer()->validate_custom_query(wp_slash($raw)));
+        if ($clean === '') {
+            $errores[] = sprintf(__('La consulta personalizada de «%s» no es válida y no se restauró.', 'secop-suite'), $title);
+        }
+        $config['custom_query'] = $clean;
+        return $config;
     }
 
     /**
@@ -590,7 +656,7 @@ final class Config_Backup
         if ($data === null) {
             $this->back(['tipo' => 'error', 'texto' => __('Respaldo no encontrado.', 'secop-suite')]);
         }
-        $this->back($this->restore_notice($this->restore($data, !empty($_POST['vista']))));
+        $this->back($this->restore_notice($this->restore($data, !empty($_POST['vista']), true)));
     }
 
     public function handle_importar(): void
@@ -604,7 +670,8 @@ final class Config_Backup
             $this->back(['tipo' => 'error', 'texto' => __('El archivo es demasiado grande.', 'secop-suite')]);
         }
         $data = json_decode((string) file_get_contents((string) $file['tmp_name']), true);
-        $this->back($this->restore_notice($this->restore(is_array($data) ? $data : [], !empty($_POST['vista']))));
+        // Un archivo nunca restaura la vista (ver restore()).
+        $this->back($this->restore_notice($this->restore(is_array($data) ? $data : [], false, false)));
     }
 
     public function handle_eliminar(): void

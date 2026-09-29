@@ -34,7 +34,7 @@ $ss_rotas    = array_sum(array_map(static fn($p) => count($p['rotos']), $pages))
         <?php esc_html_e('Cada respaldo guarda las gráficas, los filtros y las cards (con su configuración completa y su número de ID, que es el que usan los shortcodes), las opciones del plugin y la definición de la vista de Contratación. Los contratos no se incluyen: se vuelven a importar desde datos.gov.co.', 'secop-suite'); ?>
     </p>
     <p class="ss-dedup-lead">
-        <?php esc_html_e('Se crea un respaldo automático la primera vez que se carga cada versión nueva, al desactivar el plugin y antes de cualquier cambio en la vista o en la tabla de contratos. Restaurar no borra nada: actualiza o recrea los elementos del respaldo y antes guarda el estado actual.', 'secop-suite'); ?>
+        <?php esc_html_e('Se crea un respaldo automático la primera vez que se carga cada versión nueva (ese se conserva siempre), al desactivar el plugin y antes de cualquier cambio en la vista o en la tabla de contratos. Restaurar no borra nada: actualiza o recrea los elementos del respaldo y antes guarda el estado actual.', 'secop-suite'); ?>
     </p>
 
     <div class="ss-panel">
@@ -56,10 +56,7 @@ $ss_rotas    = array_sum(array_map(static fn($p) => count($p['rotos']), $pages))
                 <?php wp_nonce_field($nonce . '_importar'); ?>
                 <label for="ss-respaldo-archivo"><?php esc_html_e('Restaurar desde un archivo .json descargado:', 'secop-suite'); ?></label>
                 <input type="file" id="ss-respaldo-archivo" name="respaldo" accept=".json,application/json" required>
-                <label>
-                    <input type="checkbox" name="vista" value="1">
-                    <?php esc_html_e('Restaurar también la vista de Contratación', 'secop-suite'); ?>
-                </label>
+                <span class="description"><?php esc_html_e('Desde un archivo no se restaura la vista, y las consultas personalizadas de las gráficas se validan igual que en el editor.', 'secop-suite'); ?></span>
                 <button type="submit" class="button"><?php esc_html_e('Restaurar desde archivo', 'secop-suite'); ?></button>
             </form>
         </div>
@@ -96,7 +93,7 @@ $ss_rotas    = array_sum(array_map(static fn($p) => count($p['rotos']), $pages))
                     <td>
                         <?php echo esc_html((string) $b['reason']); ?>
                         <?php if ((int) $b['is_auto'] === 0) : ?>
-                            <br><span class="description"><?php esc_html_e('Manual: no se elimina solo', 'secop-suite'); ?></span>
+                            <br><span class="description"><?php esc_html_e('Se conserva: no se elimina automáticamente', 'secop-suite'); ?></span>
                         <?php endif; ?>
                     </td>
                     <td>

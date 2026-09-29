@@ -126,6 +126,8 @@ final class Plugin
         add_filter('plugin_action_links_' . SECOP_SUITE_BASENAME, [$this, 'add_action_links']);
 
         add_action('admin_notices', [$this, 'maybe_sysman_notice']);
+        add_action('admin_notices', [$this, 'maybe_cron_notice']);
+        add_action('admin_post_secop_suite_programar_importacion', [$this, 'handle_schedule_import']);
         add_action('admin_init', [$this, 'maybe_upgrade_on_load']);
     }
 
@@ -166,7 +168,9 @@ final class Plugin
         if (version_compare($current_version, SECOP_SUITE_DB_VERSION, '<')) {
             // v5.0.0 cambio de API (rpmr-utcd): migración destructiva de schema
             if (version_compare($current_version, '5.0.0', '<') && $current_version !== '0') {
-                $this->database->migrate_to_new_schema();
+                if (!$this->database->migrate_to_new_schema()) {
+                    return; // sin cambiar db_version: se reintenta en la próxima carga del administrador
+                }
                 // Actualizar URL de API por defecto
                 update_option(SECOP_SUITE_PREFIX . 'api_url', 'https://www.datos.gov.co/resource/rpmr-utcd.json');
             } else {
@@ -684,13 +688,10 @@ final class Plugin
             $this->maybe_upgrade();
         }
 
-        // 2) Si la actualización automática está activa pero no hay evento programado
-        //    (p. ej. se desactivó otra copia del plugin y esta nunca pasó por activate()),
-        //    reprogramarla; si no, las importaciones se detendrían en silencio.
-        if (get_option(SECOP_SUITE_PREFIX . 'auto_update_enabled', false)
-            && !wp_next_scheduled('secop_suite_scheduled_import')) {
-            $this->schedule_import();
-        }
+        // 2) Actualización automática activada pero sin evento programado (la 5.15.0
+        //    solo programaba al activar, o se desactivó otra copia): NO se programa
+        //    sola —actualizar el plugin no debe iniciar importaciones—; se avisa con
+        //    un botón para programarla (maybe_cron_notice()).
 
         // 3) Garantía adicional: si el VIEW no existe y hay tablas Sysman, crearlo
         //    (gateado por transient para no consultar la BD en cada carga de página).
@@ -699,6 +700,43 @@ final class Plugin
         if (!$this->database->view_exists() && $this->database->sysman_tables_exist()) {
             $this->database->create_view();
         }
+    }
+
+    // ── Aviso: actualización automática sin programar ──────────
+
+    /**
+     * La actualización automática está activada pero no hay ninguna importación
+     * programada: se avisa en las páginas del plugin y en Plugins, con un botón
+     * para programarla. No se programa sola para que actualizar el plugin nunca
+     * dispare una importación que el administrador no pidió.
+     */
+    public function maybe_cron_notice(): void
+    {
+        if (!current_user_can('manage_options') || !get_option(SECOP_SUITE_PREFIX . 'auto_update_enabled', false)
+            || wp_next_scheduled('secop_suite_scheduled_import')) {
+            return;
+        }
+        $screen = get_current_screen();
+        if (!$screen || (!str_contains($screen->id, 'secop-suite') && $screen->id !== 'plugins')) {
+            return;
+        }
+        $url = wp_nonce_url(admin_url('admin-post.php?action=secop_suite_programar_importacion'), 'secop_suite_programar_importacion');
+        echo '<div class="notice notice-warning"><p>'
+           . esc_html__('SECOP Suite: la actualización automática está activada, pero no hay ninguna importación programada, así que los datos no se actualizan solos.', 'secop-suite')
+           . ' <a class="button button-primary" href="' . esc_url($url) . '">'
+           . esc_html__('Programar la importación automática', 'secop-suite') . '</a></p></div>';
+    }
+
+    public function handle_schedule_import(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('No tiene permisos para programar la importación.', 'secop-suite'), '', ['response' => 403]);
+        }
+        check_admin_referer('secop_suite_programar_importacion');
+        $this->schedule_import();
+        Logger::info('Importación automática programada desde el aviso (usuario ' . get_current_user_id() . ')');
+        wp_safe_redirect(wp_get_referer() ?: self::config_url('importar'));
+        exit;
     }
 
     // ── Aviso Sysman / diagnóstico ──────────────────────────────

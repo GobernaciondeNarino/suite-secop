@@ -151,22 +151,28 @@ final class Database
 
     /**
      * Migración desde el schema antiguo (pre-5.0.0) al nuevo. La tabla antigua NO
-     * se borra: se renombra a «{tabla}_respaldo_AAAAMMDD_HHMMSS» y se crea la nueva.
+     * se borra: se renombra a «{prefijo}secop_bk_AAAAMMDDHHMMSS» y se crea la nueva.
+     * Si no se puede renombrar, no se toca nada y devuelve false.
      */
-    public function migrate_to_new_schema(): void
+    public function migrate_to_new_schema(): bool
     {
         global $wpdb;
         do_action('secop_suite_antes_de_cambio', __('Migración del esquema de contratos (anterior a 5.0.0)', 'secop-suite'));
-        $backup = $this->table_name . '_respaldo_' . gmdate('Ymd_His');
         if ($this->table_exists()) {
+            // Nombre corto: MySQL admite 64 caracteres (prefijo + 23).
+            $backup = $wpdb->prefix . 'secop_bk_' . gmdate('YmdHis');
             // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-            $wpdb->query("RENAME TABLE `{$this->table_name}` TO `{$backup}`");
+            if ($wpdb->query("RENAME TABLE `{$this->table_name}` TO `{$backup}`") === false) {
+                Logger::error("Migración v5.0.0 cancelada: no se pudo renombrar {$this->table_name} a {$backup} ({$wpdb->last_error}); la tabla no se modificó.");
+                return false;
+            }
             Logger::warning("Migración v5.0.0: la tabla anterior se conservó como {$backup}");
         }
         $this->create_table();
         update_option(SECOP_SUITE_PREFIX . 'total_records', 0);
         delete_option(SECOP_SUITE_PREFIX . 'last_import');
         Logger::info('Migración v5.0.0 completada: tabla recreada con nuevo schema');
+        return true;
     }
 
     // ── Estadísticas ───────────────────────────────────────────
@@ -433,6 +439,8 @@ final class Database
                 return true;
             }
             do_action('secop_suite_antes_de_cambio', __('Reemplazo de la vista de Contratación', 'secop-suite'));
+            // Copia adicional en el log, por si el respaldo no pudiera guardarse.
+            Logger::warning('Se reemplaza la vista ' . $this->get_view_name() . '. Definición anterior: ' . $this->view_definition());
         }
         if (!$this->sysman_tables_exist()) {
             Logger::warning('VIEW no creado: faltan tablas Sysman (sysman_auxiliar_cuentas / sysman_plan_presupuestal)');

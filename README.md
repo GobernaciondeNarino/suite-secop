@@ -95,6 +95,13 @@ Cambios:
   - **Respaldos automáticos**: la primera vez que se carga cada versión, al desactivar el plugin y antes de cualquier cambio en la vista o en la tabla. También se pueden crear a mano.
   - **Restaurar, descargar e importar** desde el propio respaldo o desde un archivo `.json`. Restaurar no borra nada y antes guarda el estado actual.
   - Lista las páginas que usan shortcodes del plugin y marca los que apuntan a gráficas, filtros o cards inexistentes.
+  - **Protecciones al restaurar**:
+    - Si no se puede guardar antes el estado actual, no se restaura nada.
+    - Nunca se activa la opción de borrar datos al desinstalar, y no se restaura nada a la papelera.
+    - Desde un **archivo** no se restaura la vista, y las consultas personalizadas se validan igual que en el editor de gráficas.
+    - Un archivo de otro sitio no sobrescribe elementos con el mismo ID.
+- **La importación automática ya no se programa sola al actualizar**: si está activada pero sin programar (la 5.15.0 solo la programaba al activar el plugin), las páginas del plugin lo avisan con el botón «Programar la importación automática». Actualizar el plugin nunca inicia una importación.
+- La migración anterior a 5.0.0 se cancela sin tocar nada si no puede renombrar la tabla. Antes de reemplazar una vista antigua, su definición también queda en el log.
 
 ### v5.19.1 — Reconoce la versión anterior aunque esté en otra carpeta (2026-09-29)
 

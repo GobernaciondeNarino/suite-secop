@@ -19,6 +19,10 @@ it('shortcodes: reconoce gráficas, filtros y cards con su ID', function () {
         ['secop_dep_card', 5], [null, null], ['secop_chart', 4],
     ], $refs, 'tipo e ID de cada shortcode');
 });
+it('shortcodes: el análisis de una card apunta a la card', function () {
+    $found = Config_Backup::parse_shortcodes('[secop_dep_analisis card="8" tipo="descripcion"]');
+    assert_eq(['secop_dep_card', 8], [$found[0]['type'], $found[0]['id']], 'card del análisis');
+});
 it('shortcodes: sin ID, con atributos parecidos o de otros plugins', function () {
     $found = Config_Backup::parse_shortcodes('[secop_dep_chart preset="dependencias"] [secop_chart data-id="3" grid="2"] [gallery id="1"] [secop_diccionario]');
     assert_eq(3, count($found), 'solo los shortcodes del plugin');

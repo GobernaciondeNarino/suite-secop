@@ -228,6 +228,11 @@ Para programar importaciones automaticas:
 3. Seleccionar frecuencia: Diario, Semanal o Mensual
 4. Guardar configuracion
 
+Si la actualizacion automatica esta activada pero no hay ninguna importacion programada (por
+ejemplo, la 5.15.0 solo la programaba al activar el plugin), las paginas del plugin lo avisan con
+el boton **Programar la importacion automatica**. Actualizar el plugin nunca programa ni inicia una
+importacion por su cuenta.
+
 **Nota:** Requiere que WP-Cron este activo. En servidores con cron del sistema, configurar:
 
 ```bash
