@@ -299,6 +299,14 @@ return new class (dirname(__DIR__) . '/secop-suite.php') {
             }
         }
 
+        // Una copia sin cargar que no es más nueva que la que está en uso no ofrece
+        // cambiarse a ella (sería volver a una versión anterior): el aviso de la copia
+        // en uso ya ofrece retirar las demás.
+        if ($inactive_mode && defined('SECOP_SUITE_VERSION')
+            && version_compare($this->version, (string) SECOP_SUITE_VERSION, '<=')) {
+            return;
+        }
+
         // Solo en la pantalla de plugins y en las del propio plugin (evita leer
         // carpetas en cada página del administrador).
         $page = sanitize_key((string) ($_GET['page'] ?? ''));
