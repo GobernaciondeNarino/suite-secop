@@ -103,6 +103,14 @@ Cambios:
 - **La importación automática ya no se programa sola al actualizar**: si está activada pero sin programar (la 5.15.0 solo la programaba al activar el plugin), las páginas del plugin lo avisan con el botón «Programar la importación automática». Actualizar el plugin nunca inicia una importación.
 - La migración anterior a 5.0.0 se cancela sin tocar nada si no puede renombrar la tabla. Antes de reemplazar una vista antigua, su definición también queda en el log.
 
+**Verificado en WordPress 7.1.2** con el código de producción (5.15.0) instalado en `secop-suite-main/`. El entorno de prueba tenía una vista personalizada, gráficas publicadas, en borrador, pendientes, privadas y en la papelera (una con consulta personalizada), filtros, cards de preset y a medida, y 5 páginas con 38 shortcodes. Resultado: 136 comprobaciones sin fallos.
+
+- **Subir el ZIP**: WordPress ofrece «Reemplazar el actual con el subido» (5.15.0 → 5.19.2). Al reemplazar no se ejecuta ningún hook.
+- **Tras reemplazar**: las opciones, los posts y sus metas son idénticos byte a byte, y también lo son el checksum de las tablas, la definición y los datos de la vista, el cron, el HTML de las páginas y los datos que cargan las gráficas.
+- **Pérdida simulada**: se ejecutó el desinstalador de la 5.15.0 (el que borró producción). Los respaldos sobrevivieron y, desde la pestaña Respaldos, se recuperaron los 18 elementos con sus mismos IDs, sus metas idénticas, las opciones, la vista y el cron.
+- **ZIP en otra carpeta y «Activar»**: la versión nueva retira la copia 5.15.0 sin ejecutar su desinstalador, y los datos quedan intactos.
+- Única pérdida conocida: el log de importación de la 5.15.x, que estaba dentro de la carpeta del plugin.
+
 ### v5.19.1 — Reconoce la versión anterior aunque esté en otra carpeta (2026-09-29)
 
 WordPress reconoce un plugin solo por el nombre de su carpeta: si la instalación de producción está en una carpeta distinta a `secop-suite/` (p. ej. `suite-secop-main/`, del «Download ZIP» de GitHub), al subir la versión nueva la instala como un plugin aparte. Ahora el plugin reconoce las demás copias de SECOP Suite **por su encabezado, sin importar la carpeta**:
