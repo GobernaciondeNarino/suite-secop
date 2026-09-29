@@ -33,10 +33,10 @@ $ss_examples = [
         [$ss_example('export/csv', ['tipo_de_contrato' => 'Obra']), __('Descargar en CSV solo los contratos de obra.', 'secop-suite')],
     ],
     'consulta' => [
-        [$ss_example('consulta'), __('Una fila por contrato de la vigencia actual, con su ejecución presupuestal.', 'secop-suite')],
-        [$ss_example('consulta', ['agrupar' => 'detalle']), __('Una fila por asiento presupuestal (sin repetidos).', 'secop-suite')],
+        [$ss_example('consulta'), __('Ejecución presupuestal de la vigencia actual: una fila por asiento (sin repetidos).', 'secop-suite')],
+        [$ss_example('consulta', ['agrupar' => 'contrato']), __('Una fila por contrato, con los valores presupuestales sumados.', 'secop-suite')],
         [$ss_example('consulta', ['nombredependencia' => 'SECRETARIA DE EDUCACION']), __('Contratos ejecutados por una dependencia.', 'secop-suite')],
-        [$ss_example('consulta', ['order_by' => 'valor_efectivo', 'order' => 'desc', 'per_page' => 10]), __('Los 10 contratos con mayor valor efectivo.', 'secop-suite')],
+        [$ss_example('consulta', ['agrupar' => 'contrato', 'order_by' => 'valor_efectivo', 'order' => 'desc', 'per_page' => 10]), __('Los 10 contratos con mayor valor efectivo.', 'secop-suite')],
         [$ss_example('consulta/csv', ['modalidad_de_contratacion_like' => 'directa']), __('Descargar en CSV los contratos de contratación directa.', 'secop-suite')],
     ],
 ];
@@ -47,8 +47,8 @@ $ss_responses = [
         'meta' => ['total' => 1840, 'per_page' => 10, 'current_page' => 1, 'total_pages' => 184],
     ],
     'consulta' => [
-        'vigencia' => (int) date('Y'), 'agrupacion' => 'contrato', 'page' => 1, 'per_page' => 100, 'total' => 950, 'total_pages' => 10,
-        'data' => [['numero_del_contrato' => 'CD-001-' . date('Y'), 'nombredependencia' => 'SECRETARIA DE EDUCACION', 'valor_contrato' => '15000000.00', 'valordebito' => '9000000.00', 'valor_efectivo' => '9000000.00', '…' => '…']],
+        'vigencia' => (int) date('Y'), 'agrupacion' => 'asiento', 'page' => 1, 'per_page' => 100, 'total' => 1320, 'total_pages' => 14,
+        'data' => [['nombredependencia' => 'SECRETARIA DE EDUCACION', 'numero_de_proceso' => 'CD-001-' . date('Y'), 'numero_del_contrato' => 'CD-001-' . date('Y'), 'nombretercero' => 'CONTRATISTA S.A.S.', 'valordebito' => '9000000.00', 'valorcredito' => '0.00', 'saldoporejecutaresp' => '6000000.00', 'valor_contrato' => '15000000.00', 'anio' => (int) date('Y'), 'mes' => 3]],
     ],
 ];
 ?>

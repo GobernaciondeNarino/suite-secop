@@ -164,11 +164,10 @@ final class Importer
         $fecha_inicio = get_option(SECOP_SUITE_PREFIX . 'fecha_inicio', '2016-01-01');
         $fecha_fin    = get_option(SECOP_SUITE_PREFIX . 'fecha_fin', date('Y-12-31'));
 
-        // La opción se guardó UNA sola vez al activar el plugin: un "31 de diciembre"
-        // de un año pasado congelaba las importaciones programadas (dejaban de traer
-        // contratos nuevos en silencio). Se trata como default rodante y se avanza al
-        // año en curso; una fecha de corte explícita a mitad de año no se toca.
-        if (empty($fecha_fin) || (preg_match('/^\d{4}-12-31$/', (string) $fecha_fin) && $fecha_fin < date('Y-01-01'))) {
+        // Una fecha fin vacía usa el 31 de diciembre del año en curso. Una fecha
+        // guardada se respeta tal cual (puede ser un corte elegido a propósito);
+        // si ya pasó, la pestaña Importar datos lo advierte.
+        if (empty($fecha_fin)) {
             $fecha_fin = date('Y-12-31');
         }
 

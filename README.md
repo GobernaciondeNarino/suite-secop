@@ -70,76 +70,41 @@ wp secop truncate --yes                            # Limpiar datos
 - Modal de detalle de contrato con información completa
 - Sistema de logs con información del sistema
 - Panel de información de API REST y comandos CLI
-- **Configuración** (v5.18.0): Importar datos, Registros, Depuración BD y Logs reunidos en una sola página con pestañas
 - **Depuración BD** (v5.17.0): diagnóstico de duplicados, eliminación con respaldo y restauración por lote, restauración del índice único por número de contrato
 
 ---
 
 ## Changelog
 
-### v5.18.0 — Configuración con pestañas, actualización sin duplicar el plugin y datos protegidos al desinstalar (2026-09-28)
+### v5.19.0 — Cambios reaplicados sobre la 5.15.0 sin alterar la configuración existente (2026-09-28)
 
-**Corrección del error de «Depuración BD» (404 en producción):** el submenú se registraba antes que el menú padre `SECOP Suite`, así que WordPress generaba el enlace `wp-admin/secop-suite-depuracion` (sin `admin.php?page=`) y el tema mostraba «Parece que esta página no existe». La depuración ahora vive como pestaña de Configuración y ya no registra un menú propio.
+Tras restaurar la 5.15.0 (la configuración de producción se había perdido al **eliminar** la copia 5.15.0 para instalar otra en una carpeta distinta: su `uninstall.php` borraba contratos, opciones, gráficas y filtros), los cambios se reaplicaron por etapas sobre la 5.15.1 y se verificaron en WordPress real con una configuración de producción. Reúne lo que se había publicado como 5.16.0–5.18.0, **corrigiendo lo que alteraba configuraciones existentes**:
 
-**Nueva página «Configuración»** (SECOP Suite → Configuración): reúne en pestañas **Importar datos**, **Registros**, **Depuración BD** y **Logs** (`admin.php?page=secop-suite-config&tab=importar|registros|depuracion|logs`). Las URLs antiguas (`secop-suite-import`, `secop-suite-records`, `secop-suite-logs`, `secop-suite-depuracion`) redirigen a la pestaña equivalente conservando sus parámetros. En Registros, las vistas Actual/Consulta usan ahora el parámetro `vista`. Corregido de paso: el estado «Cron activo» de Logs consultaba un hook inexistente y siempre decía «No programado»; la acción rápida «Importar datos» del escritorio apuntaba al propio escritorio.
+**Compatibilidad con la configuración existente (novedad de esta versión):**
+- Las gráficas y cards en **borrador, pendientes o privadas** usadas en páginas se siguen mostrando como en la 5.15.0 (las 5.16–5.18 solo servían las publicadas). Se bloquean solo las de la papelera y los posts que no son gráficas ni cards.
+- **Consulta personalizada**: se validan de verdad todas las tablas de `FROM` (incluidos los JOIN por coma `FROM a, b`) y de los `JOIN`; los `FROM` dentro de funciones como `EXTRACT(YEAR FROM …)` no cuentan. Si al guardar la consulta no pasa la validación, **se conserva la anterior** y se muestra el motivo en pantalla (las 5.16–5.18 la borraban en silencio al pulsar «Actualizar»).
+- La **fecha fin** de importación se respeta tal cual (las 5.16–5.18 ampliaban sola un «31 de diciembre» pasado); si ya pasó, la pestaña Importar datos lo advierte.
+- **`/consulta` conserva su formato**: por defecto (`agrupar=asiento`) publica los mismos 10 campos por asiento que la 5.15.0 y el CSV/TXT todas las columnas publicables, pero sin filas repetidas. `?agrupar=contrato` entrega una fila por contrato y `?agrupar=detalle` todas las columnas por asiento.
+- Si la **actualización automática** está activa pero el evento de importación no está programado (por ejemplo, tras desactivar otra copia del plugin), se reprograma al abrir el administrador; antes las importaciones se detenían en silencio.
+- El **VIEW** de Contratación se crea aunque la tabla de contratos y las de Sysman tengan colaciones distintas (antes fallaba con «Illegal mix of collations» y el módulo quedaba sin datos).
 
-**Actualizar sin instalar una segunda copia:**
-- `bin/build-zip.sh` genera `dist/secop-suite.zip` con la carpeta raíz `secop-suite/` (la instalada en producción), así WordPress ofrece «Reemplazar el actual con el subido» en lugar de instalar otro plugin. El «Download ZIP» de GitHub trae la carpeta `suite-secop-<rama>` y por eso se instalaba como plugin nuevo.
-- Workflow `.github/workflows/release.yml`: al publicar un tag `vX.Y.Z` verifica la versión, ejecuta las pruebas y adjunta `secop-suite.zip` al release.
-- El actualizador consultaba el repositorio inexistente `GobernaciondeNarino/secop-suite` y nunca ofrecía actualizaciones: ahora usa `GobernaciondeNarino/suite-secop`, prefiere el ZIP del release, conserva la carpeta instalada sea cual sea la del paquete y reactiva el plugin solo si estaba activo.
-- Si por error quedan dos copias instaladas, la segunda ya no provoca un error fatal: no se carga y muestra un aviso con la carpeta que sobra.
+**Reaplicado de 5.16.0 (seguridad y bugs):** documentos de identidad (Ley 1581) fuera de todos los endpoints públicos; XSS en tooltips de d3plus y en el detalle de contratos del admin; consulta personalizada con validación real de tablas; logs fuera de la carpeta pública del plugin; lista blanca de hosts de la API; limitador de peticiones corregido; `/contracts` con `per_page=0`/`page=0`; importador (lote fallido, importaciones >1 h, cancelación); bucle de recargas en Importar; filtros de rango que nunca se aplicaban; cron que no se reprogramaba al guardar; paginación de Registros; caché de Contratación tras importar. Detalle en AUDITORIA.md.
 
-**Datos protegidos al desinstalar:** eliminar el plugin desde WordPress ya NO borra la tabla de contratos, la vista, los respaldos, las gráficas, los filtros ni la configuración. Solo se purgan si se marca «Eliminar todos los datos al desinstalar el plugin» (Configuración → Importar datos) y no hay otra copia instalada. ⚠️ Las versiones 5.17.0 y anteriores sí borran todo al pulsar «Eliminar»: no las elimine desde el administrador (ver INSTALACION.md → «Actualizar sin perder datos»).
+**Reaplicado de 5.17.0:** módulo **Depuración BD** (diagnóstico, análisis por criterio con huella exacta, eliminación con respaldo y restauración por lote, índice único), APIs de Datos Abiertos sin filas repetidas y shortcode **`[secop_diccionario]`** + endpoint `/diccionario`.
 
-### v5.17.0 — Depuración de base de datos, APIs sin duplicados y diccionario de datos (2026-09-25)
+**Reaplicado de 5.18.0:** página **Configuración** con pestañas (Importar datos, Registros, Depuración BD, Logs) que corrige el 404 de Depuración BD; URLs antiguas redirigidas; Panel de Control visible en el submenú; listado de Cards sin error de JavaScript.
 
-**Nuevo módulo «Depuración BD»** (SECOP Suite → Depuración BD, solo administradores):
-- **Diagnóstico**: registros por tabla, estado del índice único por número de contrato, procesos con varios contratos (comparten asientos de Sysman en la vista), rubros repetidos en el plan presupuestal y filas/contratos de la vista de consulta.
-- **Análisis de duplicados** sobre la tabla de contratos, `sysman_auxiliar_cuentas`, `sysman_plan_presupuestal` y tablas `dat_*`, con criterios predefinidos (filas idénticas; mismo contrato registrado con dos números; mismo asiento; mismo rubro) o personalizados. Muestra el número de grupos, las filas a eliminar y una muestra para revisión.
-- **Comparación exacta y segura**: huella SHA-256 que distingue NULL de vacío, mayúsculas, tildes y espacios, y compara el valor completo (un `GROUP BY` sobre TEXT solo compara los primeros 1024 bytes y habría tomado por iguales textos distintos). Opción para ignorar filas con campos del criterio vacíos.
-- **Eliminación con respaldo**: se conserva un registro por grupo (el de mayor o menor ID); cada fila eliminada se guarda en `{prefix}secop_dedup_backup` y puede **restaurarse** por lote. Lotes de 500 en transacción, máximo 20.000 filas por ejecución, candado contra ejecuciones simultáneas o durante una importación, registro en el log.
-- **Restaurar el índice único** `unique_contract` cuando falta y ya no hay números repetidos.
+**Nota**: el log de importación de la 5.15.x (dentro de la carpeta del plugin) no se conserva al reemplazar el plugin, porque WordPress borra esa carpeta; el nuevo log empieza vacío en `wp-content/uploads/`.
 
-**Datos Abiertos — APIs sin información duplicada:**
-- El VIEW cruza cada contrato con todos sus asientos presupuestales, así que `/consulta`, `/consulta/csv` y `/consulta/txt` devolvían un contrato una vez por asiento (y repetían `valor_contrato` en cada fila). Ahora parten de un conjunto `DISTINCT` de filas de detalle (sin los ids internos de cada tabla, para que colapsen los asientos reimportados en Sysman) y, por defecto, **entregan una fila por contrato** (`agrupar=contrato`) con los valores presupuestales sumados, `valor_efectivo`, dependencias y rubros. `agrupar=detalle` entrega una fila por asiento distinto.
-- La respuesta JSON de `/consulta` incluye `agrupacion`, `per_page`, `total` y `total_pages`. Orden total con desempates para que la paginación y las descargas por lotes no repitan ni omitan filas; las descargas de la vigencia ahora también se generan por lotes.
-- ⚠️ Cambio de formato: las filas de `/consulta` pasan a ser por contrato. Para el comportamiento anterior (una fila por asiento) use `?agrupar=detalle`.
-- **Privacidad**: la columna `tercero` del VIEW (identificación del tercero en Sysman) se trata como dato personal (Ley 1581): ya no se exporta en el CSV/TXT de la vigencia ni se puede usar como filtro u orden.
-- Escritor CSV/TXT único para `/export/*` y `/consulta/*` (elimina la duplicación D3 de la auditoría); CSV conforme a RFC 4180 y compatible con PHP 8.4; en TXT los saltos de línea de los textos ya no rompen el ancho fijo.
+### v5.15.1 — Red de seguridad para instalar y actualizar sin perder datos (2026-09-28)
 
-**Nuevo shortcode `[secop_diccionario]`** y endpoint **`GET /wp-json/secop-suite/v1/diccionario`**:
-- Guía pública de la API: cómo funciona, puntos de acceso, **diccionario de campos** (nombre, tipo y descripción, generado a partir de las columnas reales de la base y nunca con datos personales), parámetros de filtrado, ejemplos con enlaces, estructura de la respuesta JSON y condiciones de uso (límite de solicitudes, caché, privacidad).
-- Atributos: `api="todas|contratos|consulta"`, `ejemplos="si|no"`, `titulo="…"`. El endpoint devuelve el mismo diccionario en JSON para portales de datos y automatizaciones.
-- Los esquemas viven en la nueva clase `Open_Data`, que usan a la vez la API y el diccionario, de modo que la documentación no puede divergir de la respuesta real.
+Parte del código de la **5.15.0** (restaurada a pedido del usuario) y solo agrega protecciones; no cambia ninguna funcionalidad del plugin.
 
-**Pruebas**: 9 pruebas unitarias nuevas (39 en total) y verificación de extremo a extremo contra MariaDB 10.11 con `ONLY_FULL_GROUP_BY`.
-
-### v5.16.0 — Auditoría integral: seguridad, bugs y calidad (2026-08-24)
-
-**Seguridad (ver AUDITORIA.md para la lista completa):**
-- **Ley 1581 / PII:** el `documento_proveedor` ya no se expone en NINGÚN endpoint público: se eliminó del AJAX de filtros (`secop_suite_filter_search`), del explorador y las listas de contratistas (`secop_dep_explora_contratistas` / `secop_dep_lista`) y de la whitelist de campos públicos del explorador. La capa REST ya lo protegía; ahora la política es uniforme.
-- **XSS:** los tooltips de d3plus en `frontend.js` escapan título y celdas (d3plus los inserta con `innerHTML`; un nombre de contratista malicioso importado de datos.gov.co podía ejecutar JS). En `admin-import.js` el helper de escape ahora cubre comillas (los valores se interpolan en atributos) y el enlace `url_contrato` exige esquema `http(s)`.
-- Los endpoints públicos de gráficas (REST `/chart/{id}/*` y AJAX) solo sirven gráficas/cards **publicadas** (antes ejecutaban configs de borradores, privados o papelera).
-- La query personalizada valida ahora las tablas REALES de `FROM`/`JOIN` contra la whitelist (el check anterior por substring era evadible) y rechaza joins por coma.
-- Los logs se movieron a `wp-content/uploads/secop-suite-logs-{sufijo aleatorio}/` (antes vivían en una ruta pública predecible del plugin, protegida solo por `.htaccess` de Apache 2.2); `.htaccess` con sintaxis 2.2 + 2.4, migración automática del log antiguo.
-- El importador solo acepta hosts de la API en allowlist (`datos.gov.co`, filtrable con `secop_suite_allowed_api_hosts`).
-- Nuevo `Rate_Limiter` compartido (ventana fija): reemplaza 8 copias del limitador por IP y corrige que el TTL se reiniciara en cada petición (podía bloquear indefinidamente a un usuario legítimo).
-
-**Bugs corregidos:**
-- REST `/contracts`: `per_page=0` causaba un fatal (división por cero) y `page=0` un OFFSET negativo (error SQL).
-- Importador: un lote fallido provocaba `TypeError` fatal (`count(null)` en el `do…while`); ahora se salta el lote con tope de 3 fallos consecutivos. El candado `import_running` se renueva por lote (importaciones >1h se "auto-cancelaban") y una importación cancelada ya no se reporta como completada.
-- La página de importación entraba en un bucle de recargas cada 2 s durante ~1 hora tras completar una importación.
-- Los filtros de tipo "rango" de `[secop_filter]` nunca se aplicaban (se descartaban antes de evaluarse).
-- Activar/cambiar/desactivar la **Actualización Automática** ahora (re)programa el cron al guardar (antes solo surtía efecto al reactivar el plugin).
-- `fecha_fin` de importación: un "31 de diciembre" de un año pasado (default congelado en la activación) se avanza al año en curso — las importaciones programadas dejaban de traer datos nuevos en silencio.
-- Paginación y contador de la página Registros respetan los filtros activos; la limpieza de logs se procesa en `admin_init` (el redirect fallaba por "headers already sent").
-- Exportaciones por lotes: tie-breaker estable (`id`) en el ORDER BY para no duplicar/omitir filas entre lotes.
-- La invalidación de caché tras importar/truncar ahora también borra los cachés del módulo de Contratación (`secop_trk_*`).
-- Desinstalación: elimina también las cards de seguimiento, el VIEW `vista_secop_sysman`, todos los transients `secop_*` y el directorio de logs.
-
-**Herramientas de desarrollo:**
-- Skills UI/UX Pro Max en `.claude/skills/` y workflows de GitHub Actions: `claude.yml` (claude-code-action) y `security-review.yml` (claude-code-security-review).
-- Nueva `AUDITORIA.md`: lista completa de hallazgos (corregidos y pendientes) para las próximas iteraciones.
+- **Desinstalar ya no borra datos**: hasta la 5.15.0, «Plugins → Eliminar» ejecutaba un `uninstall.php` que borraba la tabla de contratos, todas las opciones (URL de la API, NIT, fechas…), todas las gráficas y todos los filtros. Ahora se conserva todo por defecto; solo se purga si se marca «Eliminar todos los datos al desinstalar el plugin» (Importar Datos → Configuración) y no hay otra copia instalada.
+- **Copias duplicadas**: si quedan dos carpetas del plugin, la segunda ya no provoca un error fatal; no se carga y muestra un aviso con la carpeta que sobra.
+- **ZIP con la carpeta correcta**: `bin/build-zip.sh` genera `dist/secop-suite.zip` con la carpeta raíz `secop-suite/`, así WordPress ofrece «Reemplazar el actual con el subido» en lugar de instalar un plugin nuevo (el «Download ZIP» de GitHub trae `suite-secop-<rama>/`). El workflow `release.yml` publica ese ZIP al crear un tag `vX.Y.Z`.
+- **Actualizador**: consultaba el repositorio inexistente `GobernaciondeNarino/secop-suite`; ahora usa `GobernaciondeNarino/suite-secop`, prefiere el ZIP del release y conserva la carpeta instalada.
+- Guía «Actualizar sin perder datos» en INSTALACION.md.
 
 ### v5.12.0 — Red ego (Rings) muestra toda la red al inicio + selector separado
 - La **Red ego `[secop_dep_rings]`** ahora muestra **toda la red de contratación al inicio** (todas las dependencias, contratistas, tipos y modalidades como grafo de fuerza d3 con layout acotado para responsividad con ~1700 nodos) en la **misma card**. Se **eliminó el autocentrado** en la dependencia de mayor valor.

@@ -3,7 +3,7 @@
  * Plugin Name: SECOP Suite
  * Plugin URI: https://github.com/GobernaciondeNarino/suite-secop
  * Description: Plugin integral para la importación, almacenamiento y visualización interactiva de datos contractuales del SECOP (Sistema Electrónico de Contratación Pública) de Colombia. Combina importación automatizada desde datos.gov.co con gráficas D3plus configurables mediante shortcodes.
- * Version: 5.18.0
+ * Version: 5.19.0
  * Requires at least: 6.0
  * Requires PHP: 8.1
  * Author: Jonnathan Bucheli Galindo - Gobernación de Nariño
@@ -59,7 +59,7 @@ if (defined('SECOP_SUITE_VERSION')
                    '<code>wp-content/plugins/' . esc_html($secop_suite_sobra) . '/</code>'
                )
                . '</p><p>'
-               . esc_html__('Desactive la copia sobrante y borre su carpeta por FTP o con el administrador de archivos del hosting. No use «Eliminar» en una copia de la versión 5.17.0 o anterior: su desinstalador borra los datos del plugin.', 'secop-suite')
+               . esc_html__('Desactive la copia sobrante y borre su carpeta por FTP o con el administrador de archivos del hosting. No use «Eliminar» en una copia de las versiones 5.15.0, 5.16.0, 5.17.0 o anteriores: su desinstalador borra los datos del plugin.', 'secop-suite')
                . '</p></div>';
         };
         add_action('admin_notices', $secop_suite_aviso);
@@ -71,7 +71,7 @@ if (defined('SECOP_SUITE_VERSION')
 }
 
 // ─── Constantes ────────────────────────────────────────────────
-define('SECOP_SUITE_VERSION', '5.18.0');
+define('SECOP_SUITE_VERSION', '5.19.0');
 define('SECOP_SUITE_DB_VERSION', '5.11.1');
 define('SECOP_SUITE_DIR', plugin_dir_path(__FILE__));
 define('SECOP_SUITE_URL', plugin_dir_url(__FILE__));
@@ -156,7 +156,10 @@ final class Plugin
         register_deactivation_hook(__FILE__, [$this, 'deactivate']);
 
         add_action('init', [$this, 'load_textdomain']);
-        add_action('admin_menu', [$this, 'register_admin_menu']);
+        // Prioridad 9: antes de _add_post_type_submenus (10). Si los CPT con
+        // show_in_menu='secop-suite' se añaden primero, WordPress ya no crea la
+        // entrada del panel en el submenú y el panel queda inaccesible desde el menú.
+        add_action('admin_menu', [$this, 'register_admin_menu'], 9);
         add_action('admin_menu', [$this, 'sort_submenus'], 9999);
         add_action('admin_init', [$this, 'register_settings']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
@@ -303,6 +306,16 @@ final class Plugin
             21
         );
 
+        // Primera entrada del submenú: el panel (mismo slug que el menú padre).
+        add_submenu_page(
+            'secop-suite',
+            __('Panel de Control', 'secop-suite'),
+            __('Panel de Control', 'secop-suite'),
+            'manage_options',
+            'secop-suite',
+            [$this, 'render_dashboard_page']
+        );
+
         // Importar datos, Registros, Depuración BD y Logs se agrupan como
         // pestañas de una sola página. Se registra aquí (después de add_menu_page)
         // para que el hookname tenga el padre correcto; antes Depuración BD se
@@ -342,12 +355,15 @@ final class Plugin
         global $submenu;
         if (empty($submenu['secop-suite'])) return;
         $items = $submenu['secop-suite'];
+        // El panel (slug del menú padre) va siempre primero; el resto, alfabético.
+        $panel = array_values(array_filter($items, static fn($i) => ($i[2] ?? '') === 'secop-suite'));
+        $items = array_filter($items, static fn($i) => ($i[2] ?? '') !== 'secop-suite');
         usort($items, static function ($a, $b) {
             $ta = html_entity_decode(wp_strip_all_tags($a[0]));
             $tb = html_entity_decode(wp_strip_all_tags($b[0]));
             return strcasecmp($ta, $tb);
         });
-        $submenu['secop-suite'] = array_values($items);
+        $submenu['secop-suite'] = array_merge($panel, array_values($items));
     }
 
     // ── Registro de configuraciones ────────────────────────────
@@ -733,7 +749,15 @@ final class Plugin
             $this->maybe_upgrade();
         }
 
-        // 2) Garantía adicional: si el VIEW no existe y hay tablas Sysman, crearlo
+        // 2) Si la actualización automática está activa pero no hay evento programado
+        //    (p. ej. se desactivó otra copia del plugin y esta nunca pasó por activate()),
+        //    reprogramarla; si no, las importaciones se detendrían en silencio.
+        if (get_option(SECOP_SUITE_PREFIX . 'auto_update_enabled', false)
+            && !wp_next_scheduled('secop_suite_scheduled_import')) {
+            $this->schedule_import();
+        }
+
+        // 3) Garantía adicional: si el VIEW no existe y hay tablas Sysman, crearlo
         //    (gateado por transient para no consultar la BD en cada carga de página).
         if (get_transient(SECOP_SUITE_PREFIX . 'view_checked')) return;
         set_transient(SECOP_SUITE_PREFIX . 'view_checked', 1, HOUR_IN_SECONDS);

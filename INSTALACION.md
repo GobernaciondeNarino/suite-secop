@@ -1,4 +1,4 @@
-# SECOP Suite v5.18.0 - Guia de Instalacion en WordPress
+# SECOP Suite v5.19.0 - Guia de Instalacion en WordPress
 
 ## Requisitos del Sistema
 
@@ -39,7 +39,7 @@ wp plugin activate secop-suite
 ## Actualizar sin perder datos
 
 > **ADVERTENCIA:** NUNCA use **Plugins > Eliminar** sobre una copia antigua de SECOP Suite
-> de la version **5.17.0 o anterior**. El `uninstall.php` de esas versiones borra la tabla de
+> de las versiones **5.15.0, 5.16.0, 5.17.0 o anteriores**. El `uninstall.php` de esas versiones borra la tabla de
 > contratos, la vista de seguimiento, los respaldos, las graficas, los filtros, las cards y toda
 > la configuracion. Si tiene una copia duplicada instalada, **desactivela** y **borre su carpeta
 > por FTP/SFTP o con el administrador de archivos del hosting** (por ejemplo
@@ -63,9 +63,9 @@ solo reemplaza la version instalada cuando el ZIP que se sube tiene esa misma ca
 
 ### Opcion B: desde el escritorio de WordPress
 
-A partir de la version 5.18.0 el actualizador consulta los releases de
-`GobernaciondeNarino/suite-secop` (hasta la 5.17.0 apuntaba a un repositorio inexistente y
-nunca ofrecia actualizaciones, asi que el primer salto desde la 5.17.0 debe hacerse con la
+A partir de la version 5.15.1 el actualizador consulta los releases de
+`GobernaciondeNarino/suite-secop` (antes apuntaba a un repositorio inexistente y nunca
+ofrecia actualizaciones, asi que el primer salto hacia la 5.15.1 debe hacerse con la
 Opcion A). Cuando haya un release nuevo aparecera en **Escritorio > Actualizaciones** y en
 **Plugins**: pulsar **Actualizar ahora**. El actualizador descarga el asset `secop-suite.zip`,
 instala sobre la carpeta existente y reactiva el plugin solo si estaba activo.
@@ -85,8 +85,8 @@ Para publicar un release: actualizar `Version:` y `SECOP_SUITE_VERSION`, hacer c
 empujar un tag con la misma version:
 
 ```bash
-git tag v5.18.0
-git push origin v5.18.0
+git tag v5.15.1
+git push origin v5.15.1
 ```
 
 El workflow `.github/workflows/release.yml` verifica que el tag coincida con la version,
@@ -94,7 +94,7 @@ ejecuta las pruebas, construye el ZIP y lo publica como asset del GitHub Release
 
 ### Si ya tiene dos copias instaladas
 
-1. Identificar la copia buena (carpeta `secop-suite/`). Desde esta version, si hay dos copias,
+1. Identificar la copia buena (carpeta `secop-suite/`). Desde la version 5.15.1, si hay dos copias,
    el plugin muestra un aviso en el administrador indicando que carpeta esta en uso y cual sobra,
    sin error fatal.
 2. **Desactivar** la copia sobrante en **Plugins**.
@@ -104,7 +104,7 @@ ejecuta las pruebas, construye el ZIP y lo publica como asset del GitHub Release
 
 ### Datos al desinstalar
 
-Desde esta version, eliminar el plugin **conserva todos los datos** por defecto. Solo se
+Desde la version 5.15.1, eliminar el plugin **conserva todos los datos** por defecto. Solo se
 borran si se marca **SECOP Suite > Configuracion > Importar datos > Eliminar todos los datos
 al desinstalar el plugin**, y aun asi no se borran si existe otra copia de SECOP Suite en
 `wp-content/plugins/`.
@@ -250,7 +250,7 @@ location ~* /wp-content/plugins/secop-suite/logs/ {
 
 Tras la instalacion, verifique en **SECOP Suite > Configuracion** (pestaña **Logs**) que:
 
-- La version del plugin es 5.18.0
+- La version del plugin es 5.16.0
 - La version de PHP cumple el requisito (8.1+)
 - El estado del sistema es "Listo"
 - WP-Cron esta activo (si usa actualizaciones automaticas)
@@ -266,7 +266,7 @@ Para borrar tambien los datos, marcar antes **Eliminar todos los datos al desins
 plugin** en **SECOP Suite > Configuracion** (pestaña **Importar datos**). Aun con esa casilla marcada, no se
 borra nada si hay otra copia de SECOP Suite instalada en `wp-content/plugins/`.
 
-> Las versiones 5.17.0 y anteriores borraban todos los datos al eliminar el plugin. Vea
+> Las versiones 5.15.0, 5.16.0, 5.17.0 y anteriores borraban todos los datos al eliminar el plugin. Vea
 > "Actualizar sin perder datos".
 
 ## Herramientas de Desarrollo (repositorio)

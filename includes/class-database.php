@@ -335,6 +335,34 @@ final class Database
      * Crear/reemplazar el VIEW que cruza ejecución presupuestal y contratos.
      * Devuelve true si se creó; false si faltan tablas Sysman.
      */
+    /**
+     * Expresión SQL de la columna $col (alias $alias) lista para compararse con
+     * $other_table.$other_col: si sus colaciones difieren se convierte al juego de
+     * caracteres y la colación de la otra columna. Si coinciden (o no se pueden
+     * leer) se devuelve la columna tal cual, idéntica a las versiones anteriores.
+     */
+    private function join_expr(string $table, string $col, string $other_table, string $other_col, string $alias): string
+    {
+        global $wpdb;
+        $meta = static function (string $t, string $c) use ($wpdb): ?array {
+            $row = $wpdb->get_row($wpdb->prepare(
+                'SELECT CHARACTER_SET_NAME AS cs, COLLATION_NAME AS co FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+                $t,
+                $c
+            ), ARRAY_A);
+            return (is_array($row) && !empty($row['cs']) && !empty($row['co'])) ? $row : null;
+        };
+        $mine  = $meta($table, $col);
+        $other = $meta($other_table, $other_col);
+        $plain = "{$alias}.{$col}";
+        if (!$mine || !$other || $mine['co'] === $other['co']
+            || !preg_match('/^[a-z0-9_]+$/i', $other['cs']) || !preg_match('/^[a-z0-9_]+$/i', $other['co'])) {
+            return $plain;
+        }
+        return "CONVERT({$plain} USING {$other['cs']}) COLLATE {$other['co']}";
+    }
+
     public function create_view(): bool
     {
         global $wpdb;
@@ -357,6 +385,11 @@ final class Database
         // contrato), de modo que la vista se auto-renueva cada año con YEAR(CURDATE()).
         // Columnas del asiento renombradas: fecha→fecha_asiento, anio→anio_asiento,
         // mes→mes_asiento. Nuevas: rubro_codigo, rubro_nombre, idsecop/idauxiliar/idplan.
+        // Cruces robustos ante colaciones distintas (p. ej. si la tabla de contratos se
+        // recreó con otra colación que las tablas de Sysman: «Illegal mix of collations»).
+        $sec_proceso = $this->join_expr($sec, 'numero_de_proceso', $aux, 'nrodocumento', 'sec');
+        $aux_rubro   = $this->join_expr($aux, 'rubro', $plan, 'codigo', 'aux');
+
         $sql = "CREATE OR REPLACE VIEW `{$view}` AS
             SELECT sec.id AS idsecop, aux.id AS idauxiliar, plan.id AS idplan,
               sec.numero_del_contrato, sec.numero_de_proceso, sec.objeto_a_contratar, sec.tipo_de_contrato,
@@ -367,8 +400,8 @@ final class Database
               aux.fecha AS fecha_asiento, aux.anio AS anio_asiento, aux.mes AS mes_asiento,
               plan.codigo AS rubro_codigo, plan.nombre AS rubro_nombre
             FROM (`{$sec}` sec
-              LEFT JOIN `{$aux}` aux ON (aux.nrodocumento = sec.numero_de_proceso AND aux.tipocpte = 'RES'))
-              LEFT JOIN `{$plan}` plan ON (plan.codigo = aux.rubro)
+              LEFT JOIN `{$aux}` aux ON (aux.nrodocumento = {$sec_proceso} AND aux.tipocpte = 'RES'))
+              LEFT JOIN `{$plan}` plan ON (plan.codigo = {$aux_rubro})
             WHERE YEAR(sec.fecha_de_firma_del_contrato) = YEAR(CURDATE())";
 
         // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
@@ -447,13 +480,16 @@ final class Database
         $plan = $wpdb->prefix . 'sysman_plan_presupuestal';
         $sec  = $this->table_name;
 
+        $sec_proceso = $this->join_expr($sec, 'numero_de_proceso', $aux, 'nrodocumento', 'sec');
+        $aux_rubro   = $this->join_expr($aux, 'rubro', $plan, 'codigo', 'aux');
+
         // Mismo cruce que la vista (LEFT JOIN desde secop_contracts): cuenta TODAS
         // las filas que produce la vista sin el filtro de vigencia.
         $sql = "SELECT COUNT(*) FROM (
             SELECT 1
             FROM `{$sec}` sec
-            LEFT JOIN `{$aux}` aux  ON (aux.nrodocumento = sec.numero_de_proceso AND aux.tipocpte = 'RES')
-            LEFT JOIN `{$plan}` plan ON (plan.codigo = aux.rubro)
+            LEFT JOIN `{$aux}` aux  ON (aux.nrodocumento = {$sec_proceso} AND aux.tipocpte = 'RES')
+            LEFT JOIN `{$plan}` plan ON (plan.codigo = {$aux_rubro})
         ) t";
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         return (int) $wpdb->get_var($sql);

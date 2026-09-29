@@ -84,3 +84,14 @@ it('filas idénticas excluyen la PK y las marcas de tiempo automáticas', functi
 it('condición de criterio no vacío', function () {
     assert_eq("(`a` IS NOT NULL AND CAST(`a` AS CHAR) <> '') AND (`b` IS NOT NULL AND CAST(`b` AS CHAR) <> '')", Deduplicator::non_empty_sql(['a', 'b']));
 });
+it('/consulta por defecto (asiento) conserva los 10 campos de la 5.15.0 sin filas repetidas', function () use ($view_cols) {
+    $a = Open_Data::consulta_sql('wp_vista', $view_cols, 'asiento', []);
+    assert_eq(['nombredependencia', 'numero_de_proceso', 'numero_del_contrato', 'nombretercero', 'valordebito',
+               'valorcredito', 'saldoporejecutaresp', 'valor_contrato', 'anio', 'mes'], $a['columns'], 'campos 5.15.0');
+    assert_true(str_contains($a['select'], 'FROM (SELECT DISTINCT '), 'parte del conjunto sin repetidos');
+    assert_true(!str_contains($a['select'], 'GROUP BY'), 'una fila por asiento, sin agrupar');
+    assert_true(str_starts_with($a['count'], 'SELECT COUNT(*) FROM ('), 'conteo por asiento');
+    $order = Open_Data::consulta_order($a['columns'], 'asiento', '', '', 'valordebito', $a['ties']);
+    assert_true(str_starts_with($order, 'ORDER BY `valordebito` DESC, `numero_del_contrato` ASC, d.`'), 'orden total con desempates d.*');
+    assert_eq('asiento', Open_Data::GROUPINGS[0], 'asiento es la agrupación predeterminada');
+});

@@ -37,6 +37,19 @@ if (!defined('ABSPATH')) exit;
         </div>
         <div class="ss-panel">
             <h2><span class="dashicons dashicons-admin-settings"></span> <?php esc_html_e('Configuración', 'secop-suite'); ?></h2>
+            <?php
+            $ss_fecha_fin = (string) get_option('secop_suite_fecha_fin', '');
+            if ($ss_fecha_fin !== '' && $ss_fecha_fin < current_time('Y-m-d')) : ?>
+                <div class="notice notice-warning inline"><p>
+                    <?php
+                    printf(
+                        /* translators: %s: fecha fin configurada */
+                        esc_html__('La fecha fin del rango de importación (%s) ya pasó: las importaciones no traerán contratos firmados después de esa fecha. Si no es un corte intencional, amplíela y guarde.', 'secop-suite'),
+                        '<strong>' . esc_html($ss_fecha_fin) . '</strong>'
+                    );
+                    ?>
+                </p></div>
+            <?php endif; ?>
             <form method="post" action="options.php" class="ss-settings-form">
                 <?php settings_fields('secop_suite_settings'); ?>
                 <table class="form-table">
