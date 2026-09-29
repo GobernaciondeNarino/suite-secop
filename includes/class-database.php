@@ -130,19 +130,43 @@ final class Database
         update_option(SECOP_SUITE_PREFIX . 'db_version', SECOP_SUITE_DB_VERSION);
     }
 
+    /** ¿Existe la tabla de contratos? */
+    public function table_exists(): bool
+    {
+        global $wpdb;
+        return $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $this->table_name)) === $this->table_name;
+    }
+
     /**
-     * Migración destructiva desde schema antiguo (pre-5.0.0) al nuevo.
-     * Elimina la tabla antigua y crea la nueva.
+     * Crea la tabla de contratos SOLO si no existe. Una tabla existente no se
+     * altera (a diferencia de create_table(), que aplica dbDelta): activar el
+     * plugin nunca debe modificar datos de producción.
+     */
+    public function ensure_table(): void
+    {
+        if (!$this->table_exists()) {
+            $this->create_table();
+        }
+    }
+
+    /**
+     * Migración desde el schema antiguo (pre-5.0.0) al nuevo. La tabla antigua NO
+     * se borra: se renombra a «{tabla}_respaldo_AAAAMMDD_HHMMSS» y se crea la nueva.
      */
     public function migrate_to_new_schema(): void
     {
         global $wpdb;
-        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-        $wpdb->query("DROP TABLE IF EXISTS {$this->table_name}");
+        do_action('secop_suite_antes_de_cambio', __('Migración del esquema de contratos (anterior a 5.0.0)', 'secop-suite'));
+        $backup = $this->table_name . '_respaldo_' . gmdate('Ymd_His');
+        if ($this->table_exists()) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $wpdb->query("RENAME TABLE `{$this->table_name}` TO `{$backup}`");
+            Logger::warning("Migración v5.0.0: la tabla anterior se conservó como {$backup}");
+        }
         $this->create_table();
         update_option(SECOP_SUITE_PREFIX . 'total_records', 0);
         delete_option(SECOP_SUITE_PREFIX . 'last_import');
-        Logger::info("Migración v5.0.0 completada: tabla recreada con nuevo schema");
+        Logger::info('Migración v5.0.0 completada: tabla recreada con nuevo schema');
     }
 
     // ── Estadísticas ───────────────────────────────────────────
@@ -363,9 +387,53 @@ final class Database
         return "CONVERT({$plain} USING {$other['cs']}) COLLATE {$other['co']}";
     }
 
-    public function create_view(): bool
+    /**
+     * Columnas que el plugin usa de la vista y que solo tiene la estructura
+     * vigente (desde la 5.9.0). Una vista existente con estas columnas se conserva.
+     */
+    private const VIEW_CURRENT_COLUMNS = [
+        'numero_del_contrato', 'fecha_de_firma_del_contrato', 'valor_contrato', 'nombredependencia',
+        'nombretercero', 'valordebito', 'fecha_asiento', 'mes_asiento', 'rubro_codigo',
+    ];
+
+    /** ¿La vista existente tiene la estructura vigente? (entonces no se toca). */
+    public function view_has_current_structure(): bool
+    {
+        if (!$this->view_exists()) {
+            return false;
+        }
+        wp_cache_delete('secop_cols_' . md5($this->get_view_name()), 'secop_suite');
+        $cols = $this->get_table_columns($this->get_view_name());
+        return count(array_intersect(self::VIEW_CURRENT_COLUMNS, array_keys($cols))) === count(self::VIEW_CURRENT_COLUMNS);
+    }
+
+    /** Definición actual de la vista (SHOW CREATE VIEW) o '' si no existe. */
+    public function view_definition(): string
     {
         global $wpdb;
+        if (!$this->view_exists()) {
+            return '';
+        }
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        $row = $wpdb->get_row('SHOW CREATE VIEW `' . $this->get_view_name() . '`', ARRAY_N);
+        return is_array($row) ? (string) ($row[1] ?? '') : '';
+    }
+
+    /**
+     * Crea la vista de Contratación. Una vista EXISTENTE solo se reemplaza si se
+     * pide expresamente ($replace = true, en migraciones de estructura), y antes
+     * se respalda su definición: activar el plugin nunca reescribe la vista de
+     * producción (antes cada activación hacía CREATE OR REPLACE VIEW).
+     */
+    public function create_view(bool $replace = false): bool
+    {
+        global $wpdb;
+        if ($this->view_exists()) {
+            if (!$replace) {
+                return true;
+            }
+            do_action('secop_suite_antes_de_cambio', __('Reemplazo de la vista de Contratación', 'secop-suite'));
+        }
         if (!$this->sysman_tables_exist()) {
             Logger::warning('VIEW no creado: faltan tablas Sysman (sysman_auxiliar_cuentas / sysman_plan_presupuestal)');
             return false;

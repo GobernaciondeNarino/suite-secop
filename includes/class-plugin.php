@@ -45,6 +45,7 @@ final class Plugin
     private Tracking $tracking;
     private Open_Data $open_data;
     private Deduplicator $deduplicator;
+    private Config_Backup $config_backup;
 
     private function __construct()
     {
@@ -57,6 +58,7 @@ final class Plugin
         $this->tracking   = new Tracking($this->database);
         $this->open_data  = new Open_Data($this->database);
         $this->deduplicator = new Deduplicator($this->database);
+        $this->config_backup = new Config_Backup($this->database);
 
         $this->register_hooks();
     }
@@ -73,6 +75,7 @@ final class Plugin
     public function filter(): Filter         { return $this->filter; }
     public function tracking(): Tracking     { return $this->tracking; }
     public function open_data(): Open_Data   { return $this->open_data; }
+    public function config_backup(): Config_Backup { return $this->config_backup; }
 
     // ── Hooks ──────────────────────────────────────────────────
     private function register_hooks(): void
@@ -135,11 +138,14 @@ final class Plugin
     // ── Activación / Desactivación ─────────────────────────────
     public function activate(): void
     {
-        $this->database->create_table();
+        // Activar NUNCA modifica datos existentes: la tabla y la vista solo se
+        // crean si no existen (antes cada activación aplicaba dbDelta a la tabla y
+        // hacía CREATE OR REPLACE VIEW sobre la vista de producción).
+        $this->database->ensure_table();
         $this->set_default_options();
         $this->maybe_upgrade();
 
-        // v5.1.0: crear VIEW del módulo de seguimiento (si hay tablas Sysman).
+        // v5.1.0: crear VIEW del módulo de seguimiento si no existe (si hay tablas Sysman).
         $this->database->create_view();
 
         if (get_option(SECOP_SUITE_PREFIX . 'auto_update_enabled', false)) {
@@ -171,15 +177,14 @@ final class Plugin
             // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             $wpdb->query("DROP VIEW IF EXISTS `" . $wpdb->prefix . "dat_seguimiento_dependencias`");
 
-            // v5.9.0: la definición de vista_secop_sysman cambió estructuralmente
-            // (LEFT JOIN desde secop_contracts, vigencia por fecha_de_firma, columnas
-            // *_asiento/rubro_*). DROP explícito antes de recrearla para refrescar la
-            // definición en la actualización (CREATE OR REPLACE también basta).
-            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-            $wpdb->query("DROP VIEW IF EXISTS `" . $this->database->get_view_name() . "`");
-
-            // v5.1.0: crear VIEW del módulo de seguimiento (si hay tablas Sysman).
-            $this->database->create_view();
+            // v5.9.0: la estructura de vista_secop_sysman cambió (LEFT JOIN desde
+            // secop_contracts, columnas *_asiento/rubro_*). Una vista que ya tiene la
+            // estructura vigente se CONSERVA tal cual (puede estar ajustada en
+            // producción); solo una vista antigua se reemplaza, respaldando antes su
+            // definición. Antes se hacía DROP VIEW en cada migración.
+            if (!$this->database->view_has_current_structure()) {
+                $this->database->create_view(true);
+            }
 
             // v5.11.1: renombrar las cards «(auto) …» antiguas a nombres descriptivos.
             $this->tracking->retitle_auto_cards();
@@ -192,6 +197,9 @@ final class Plugin
 
     public function deactivate(): void
     {
+        // Respaldo de la configuración antes de desactivar: si luego se borra una
+        // copia antigua cuyo desinstalador elimina datos, se puede restaurar.
+        $this->config_backup->snapshot(__('Automático: al desactivar el plugin', 'secop-suite'));
         wp_clear_scheduled_hook('secop_suite_scheduled_import');
         delete_transient(SECOP_SUITE_PREFIX . 'import_progress');
         delete_transient(SECOP_SUITE_PREFIX . 'import_running');
@@ -393,6 +401,7 @@ final class Plugin
             'importar'   => __('Importar datos', 'secop-suite'),
             'registros'  => __('Registros', 'secop-suite'),
             'depuracion' => __('Depuración BD', 'secop-suite'),
+            'respaldos'  => __('Respaldos', 'secop-suite'),
             'logs'       => __('Logs', 'secop-suite'),
         ];
     }
@@ -428,6 +437,7 @@ final class Plugin
         $render_tab = match ($active_tab) {
             'registros'  => fn() => $this->render_records_tab(),
             'depuracion' => fn() => $this->deduplicator->render_tab(),
+            'respaldos'  => fn() => $this->config_backup->render_tab(),
             'logs'       => fn() => $this->render_logs_tab(),
             default      => fn() => $this->render_import_tab(),
         };
