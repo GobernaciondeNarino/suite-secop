@@ -50,6 +50,18 @@ solo reemplaza la version instalada cuando el ZIP que se sube tiene esa misma ca
 (`secop-suite/`). El boton **Code > Download ZIP** de GitHub genera una carpeta
 `suite-secop-<rama>/`, por eso WordPress la instalaba como un plugin distinto: **no use ese ZIP**.
 
+### Generar el ZIP con la carpeta de produccion
+
+WordPress solo ofrece **Reemplazar el actual con el subido** cuando la carpeta raiz del ZIP se
+llama igual que la carpeta instalada en `wp-content/plugins/`. Para ver ese nombre: en
+**Plugins**, pase el cursor sobre "Desactivar" de SECOP Suite; el enlace contiene
+`plugin=<carpeta>%2Fsecop-suite.php`. Luego genere el ZIP con ese nombre:
+
+```bash
+bin/build-zip.sh secop-v5.15
+# -> dist/secop-suite-<version>-carpeta-secop-v5.15.zip (carpeta raiz: secop-v5.15/)
+```
+
 ### Si la instalacion actual esta en otra carpeta
 
 Si WordPress instala la version nueva como un plugin aparte ("Plugin instalado con exito" en
