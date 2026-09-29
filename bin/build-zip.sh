@@ -2,20 +2,21 @@
 # ────────────────────────────────────────────────────────────────────────────
 # Genera el ZIP instalable de SECOP Suite.
 #
-#   bin/build-zip.sh                 → carpeta raíz «secop-suite/»
-#   bin/build-zip.sh secop-v5.15     → carpeta raíz «secop-v5.15/»
+#   bin/build-zip.sh                 → carpeta raíz «secop-suite-main/» (la de producción)
+#   bin/build-zip.sh otra-carpeta    → carpeta raíz «otra-carpeta/»
 #
 # Produce:
 #   dist/secop-suite-<versión>.zip   (versión tomada de «Version:» en secop-suite.php)
 #   dist/secop-suite.zip             (copia con nombre fijo, la que busca el actualizador)
-#   o, con una carpeta distinta:     dist/secop-suite-<versión>-carpeta-<carpeta>.zip
+#   o, con otra carpeta:             dist/secop-suite-<versión>-carpeta-<carpeta>.zip
 #
 # WordPress solo ofrece «Reemplazar el actual con el subido» cuando la carpeta
 # raíz del ZIP se llama IGUAL que la carpeta instalada en wp-content/plugins/.
-# Si la instalación de producción está en otra carpeta, genere el ZIP con ese
-# nombre (primer argumento). Desde la 5.19.1 el plugin instalado también renombra
-# cualquier ZIP subido a su propia carpeta, así que esto solo hace falta para
-# actualizar desde versiones anteriores.
+# La instalación de producción está en «secop-suite-main/», por eso es la carpeta
+# por defecto. Reemplazar así no ejecuta activación ni desinstalación: la base de
+# datos, las gráficas, los filtros, las cards y los shortcodes quedan intactos.
+# Desde la 5.19.1 el plugin instalado también renombra cualquier ZIP subido a su
+# propia carpeta; el nombre solo es decisivo al actualizar desde versiones anteriores.
 #
 # Los archivos de desarrollo se excluyen según .distignore.
 # Requiere: bash, rsync, zip, unzip.
@@ -23,7 +24,8 @@
 set -euo pipefail
 
 SLUG="secop-suite"
-FOLDER="${1:-${SECOP_ZIP_FOLDER:-$SLUG}}"
+DEFAULT_FOLDER="secop-suite-main"
+FOLDER="${1:-${SECOP_ZIP_FOLDER:-$DEFAULT_FOLDER}}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MAIN="$ROOT/$SLUG.php"
 IGNORE="$ROOT/.distignore"
@@ -69,7 +71,7 @@ find "$STAGE/$FOLDER" -type d -exec chmod 755 {} +
 find "$STAGE/$FOLDER" -type f -exec chmod 644 {} +
 
 mkdir -p "$DIST"
-if [ "$FOLDER" = "$SLUG" ]; then
+if [ "$FOLDER" = "$DEFAULT_FOLDER" ]; then
     OUT="$DIST/$SLUG-$VERSION.zip"
 else
     OUT="$DIST/$SLUG-$VERSION-carpeta-$FOLDER.zip"
@@ -77,7 +79,7 @@ fi
 rm -f "$OUT"
 
 ( cd "$STAGE" && zip -rqX "$OUT" "$FOLDER" )
-if [ "$FOLDER" = "$SLUG" ]; then
+if [ "$FOLDER" = "$DEFAULT_FOLDER" ]; then
     rm -f "$DIST/$SLUG.zip"
     cp "$OUT" "$DIST/$SLUG.zip"
 fi
@@ -89,5 +91,5 @@ fi
 
 echo "ZIP generado (carpeta raíz: $FOLDER/, versión $VERSION):"
 echo "  $OUT"
-[ "$FOLDER" = "$SLUG" ] && echo "  $DIST/$SLUG.zip"
+[ "$FOLDER" = "$DEFAULT_FOLDER" ] && echo "  $DIST/$SLUG.zip"
 exit 0

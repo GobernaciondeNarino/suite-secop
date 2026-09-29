@@ -1,4 +1,4 @@
-# Auditoría SECOP Suite — v5.16.0 (actualizada en v5.17.0)
+# Auditoría SECOP Suite — v5.16.0 (actualizada en v5.19.2)
 
 **Fecha:** 2026-08-24
 **Alcance:** todo el código PHP (núcleo, plantillas, desinstalador), JS propio (`assets/js/`, sin `vendor/`) y pruebas. Tres pasadas independientes: seguridad backend, XSS/plantillas/JS y calidad (bugs, duplicación, código deficiente), con verificación cruzada de cada hallazgo.
@@ -81,7 +81,24 @@ Leyenda de estado: ✅ corregido en v5.16.0 · ⏳ pendiente (priorizado para pr
 | C8 | ⏳ | Changelog del README sin entradas v5.13–v5.15 | `README.md` |
 | C9 | ✅ v5.17.0 | `fputcsv` sin parámetro `escape` (obsoleto en PHP 8.4, podía mezclar avisos en la descarga) → escape vacío explícito (RFC 4180) | `class-rest-api.php` |
 
-## 5. Recomendaciones de proceso
+## 5. Actualizaciones y seguridad de los datos (revisión del código de producción, v5.19.2)
+
+Revisión del código instalado en producción (`secop-v5.15/` del repositorio, idéntico a la 5.15.0; carpeta del servidor `secop-suite-main/`). Explica por qué instalar una versión nueva «reemplazaba toda la BD y los shortcodes».
+
+| # | Sev. | Estado | Hallazgo | Ubicación |
+|---|------|--------|----------|-----------|
+| U1 | CRÍTICA | ✅ 5.15.1 / 5.19.1 | `uninstall.php` de 5.15.0–5.17.0: al pulsar «Eliminar» en CUALQUIER copia borra la tabla de contratos, todas las opciones `secop_suite_*` y todas las gráficas y filtros (y en 5.16–5.17 también la vista y las cards). Esa es la pérdida de datos de producción. Desde 5.15.1 desinstalar conserva los datos salvo opción expresa; desde 5.19.1 la versión activa neutraliza el desinstalador de otras copias antes de que WordPress lo ejecute | `uninstall.php`, `includes/copy-manager.php` |
+| U2 | ALTA | ✅ 5.19.2 | ZIP con una carpeta raíz distinta a la instalada (`secop-suite/`, `secop-v5.15/`, `suite-secop-main/` del «Download ZIP») → WordPress lo instala como OTRO plugin en vez de ofrecer «Reemplazar el actual con el subido». El ZIP se genera ahora con `secop-suite-main/`; desde 5.19.1 el plugin instalado renombra cualquier ZIP subido a su carpeta | `bin/build-zip.sh`, `includes/class-updater.php` |
+| U3 | ALTA | ✅ 5.19.2 | Cada activación hacía `CREATE OR REPLACE VIEW` sobre la vista de Contratación: una vista ajustada en producción se sobrescribía con la definición por defecto. Ahora solo se crea si no existe | `includes/class-plugin.php` (`activate`), `class-database.php` (`create_view`) |
+| U4 | MEDIA | ✅ 5.19.2 | Cada activación aplicaba `dbDelta` a la tabla de contratos (puede cambiar tipos o índices de una tabla existente). Ahora `ensure_table()` solo la crea si no existe | `class-database.php` |
+| U5 | ALTA | ✅ 5.19.2 | Toda migración de `db_version` hacía `DROP VIEW` y volvía a crear la vista. Ahora una vista con la estructura vigente se conserva; una antigua se reemplaza solo tras respaldar su definición | `class-plugin.php` (`maybe_upgrade`) |
+| U6 | ALTA | ✅ 5.19.2 | La migración desde el esquema anterior a 5.0.0 hacía `DROP TABLE` de los contratos. Ahora renombra la tabla a `…_respaldo_AAAAMMDD_HHMMSS` | `class-database.php` (`migrate_to_new_schema`) |
+| U7 | MEDIA | ✅ 5.19.2 | No había respaldo de la configuración: gráficas, filtros, cards, opciones y vista solo existían en la BD. Nueva pestaña **Configuración › Respaldos** con instantáneas automáticas (al cargar una versión nueva, al desactivar y antes de cambios en la vista o la tabla), restauración que conserva los IDs de los shortcodes y exportación `.json`. Tabla `{prefijo}secop_respaldos`, que el desinstalador antiguo no borra | `includes/class-config-backup.php` (nuevo) |
+| U8 | INFO | — | Lo que se borró antes de la 5.19.2 (contratos, gráficas, filtros, opciones) solo puede recuperarse desde un respaldo de la base de datos del hosting. Los contratos también se pueden reimportar desde datos.gov.co | — |
+
+Recomendación de operación: exportar la base de datos antes de cada actualización; actualizar siempre con «Reemplazar el actual con el subido»; no usar «Eliminar» en copias 5.15.0–5.17.0 (borrar su carpeta por FTP); descargar de vez en cuando un respaldo `.json` desde la pestaña Respaldos.
+
+## 6. Recomendaciones de proceso
 
 1. **Secret `ANTHROPIC_API_KEY`** en GitHub (Settings → Secrets → Actions) para activar los dos workflows nuevos: revisión de seguridad automática en cada PR (`security-review.yml`) y `@claude` en issues/PRs (`claude.yml`).
 2. Trabajar por PRs (no push directo a `main`) para que la revisión de seguridad automática corra sobre cada cambio.

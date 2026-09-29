@@ -1,4 +1,4 @@
-# SECOP Suite v5.19.1 - Guia de Instalacion en WordPress
+# SECOP Suite v5.19.2 - Guia de Instalacion en WordPress
 
 ## Requisitos del Sistema
 
@@ -14,7 +14,7 @@
 
 ### Opcion 1: Desde archivo ZIP
 
-1. Descargar `secop-suite.zip` de los **Releases** del repositorio (no el "Download ZIP" de GitHub; ver "Actualizar sin perder datos")
+1. Descargar `secop-suite.zip` de los **Releases** del repositorio (no el "Download ZIP" de GitHub; ver "Actualizar sin perder datos"). Su carpeta raiz es `secop-suite-main/`, la misma de la instalacion de produccion
 2. En el panel de WordPress ir a **Plugins > Añadir nuevo > Subir plugin**
 3. Seleccionar el archivo ZIP y hacer clic en **Instalar ahora**
 4. Hacer clic en **Activar plugin**
@@ -22,7 +22,7 @@
 ### Opcion 2: Via FTP/SFTP
 
 1. Descomprimir el archivo del plugin
-2. Subir la carpeta `secop-suite/` al directorio `/wp-content/plugins/` del servidor
+2. Subir la carpeta `secop-suite-main/` al directorio `/wp-content/plugins/` del servidor (si el plugin ya existe, sobrescribir los archivos de esa misma carpeta; no crear otra)
 3. En WordPress ir a **Plugins > Plugins instalados**
 4. Buscar "SECOP Suite" y hacer clic en **Activar**
 
@@ -30,64 +30,99 @@
 
 ```bash
 # Copiar la carpeta al directorio de plugins
-cp -r secop-suite /ruta/a/wordpress/wp-content/plugins/
+cp -r secop-suite-main /ruta/a/wordpress/wp-content/plugins/
 
 # Activar el plugin
-wp plugin activate secop-suite
+wp plugin activate secop-suite-main
 ```
 
 ## Actualizar sin perder datos
 
-> **ADVERTENCIA:** NUNCA use **Plugins > Eliminar** sobre una copia antigua de SECOP Suite
-> de las versiones **5.15.0, 5.16.0, 5.17.0 o anteriores**. El `uninstall.php` de esas versiones borra la tabla de
-> contratos, la vista de seguimiento, los respaldos, las graficas, los filtros, las cards y toda
-> la configuracion. Si tiene una copia duplicada instalada, **desactivela** y **borre su carpeta
-> por FTP/SFTP o con el administrador de archivos del hosting** (por ejemplo
-> `wp-content/plugins/suite-secop-main/`), nunca con el boton "Eliminar".
+> **ADVERTENCIA:** NUNCA use **Plugins > Eliminar** sobre una copia de SECOP Suite de las
+> versiones **5.15.0, 5.16.0, 5.17.0 o anteriores**. El `uninstall.php` de esas versiones borra la
+> tabla de contratos, todas las opciones, las graficas y los filtros (las 5.16-5.17 tambien la
+> vista, las cards y los respaldos de depuracion). Si tiene una copia sobrante, **desactivela** y
+> **borre su carpeta por FTP/SFTP o con el administrador de archivos del hosting**, nunca con el
+> boton "Eliminar".
 
-La carpeta del plugin en produccion es siempre `wp-content/plugins/secop-suite/`. WordPress
-solo reemplaza la version instalada cuando el ZIP que se sube tiene esa misma carpeta raiz
-(`secop-suite/`). El boton **Code > Download ZIP** de GitHub genera una carpeta
-`suite-secop-<rama>/`, por eso WordPress la instalaba como un plugin distinto: **no use ese ZIP**.
+**Antes de cualquier actualizacion, exporte la base de datos** desde el panel del hosting
+(phpMyAdmin > Exportar, o la copia de seguridad del hosting). Es la unica forma de recuperar
+contratos o configuraciones si algo sale mal.
 
-### Generar el ZIP con la carpeta de produccion
+La instalacion de produccion esta en la carpeta **`wp-content/plugins/secop-suite-main/`**.
+WordPress identifica el plugin por el nombre de esa carpeta: solo reemplaza la version instalada
+cuando la carpeta raiz del ZIP se llama exactamente igual. Por eso el ZIP de SECOP Suite se
+genera con la carpeta raiz `secop-suite-main/`.
 
-WordPress solo ofrece **Reemplazar el actual con el subido** cuando la carpeta raiz del ZIP se
-llama igual que la carpeta instalada en `wp-content/plugins/`. Para ver ese nombre: en
-**Plugins**, pase el cursor sobre "Desactivar" de SECOP Suite; el enlace contiene
-`plugin=<carpeta>%2Fsecop-suite.php`. Luego genere el ZIP con ese nombre:
+### Paso a paso (recomendado)
+
+1. Tener el ZIP de la version nueva (`secop-suite-<version>.zip` o `secop-suite.zip`, carpeta
+   raiz `secop-suite-main/`). No use el boton **Code > Download ZIP** de GitHub: genera la
+   carpeta `suite-secop-<rama>/`.
+2. En WordPress ir a **Plugins > Anadir nuevo > Subir plugin**, elegir el ZIP y pulsar
+   **Instalar ahora**.
+3. WordPress muestra "Este plugin ya esta instalado" y una tabla con la version actual y la
+   subida: pulsar **Reemplazar el actual con el subido**.
+   - Si en lugar de eso aparece "Plugin instalado correctamente" con el boton "Activar plugin",
+     la carpeta no coincide: **no pulse "Eliminar" en ninguna copia** y vea
+     "Si la instalacion actual esta en otra carpeta".
+4. Reemplazar solo cambia los archivos del plugin: **no ejecuta la activacion, la desactivacion
+   ni la desinstalacion**. La tabla de contratos, la vista, las graficas, los filtros, las cards,
+   las opciones y las paginas con shortcodes quedan exactamente igual.
+5. Comprobar en **SECOP Suite > Configuracion > Respaldos**: aparece el respaldo "Automatico:
+   primera carga de la version X" y la lista de paginas con shortcodes sin ninguno marcado como
+   "no existe".
+
+### Como saber el nombre de la carpeta instalada
+
+En **Plugins**, pase el cursor sobre "Desactivar" de SECOP Suite: el enlace contiene
+`plugin=<carpeta>%2Fsecop-suite.php`. Si no es `secop-suite-main`, genere el ZIP con ese nombre:
 
 ```bash
-bin/build-zip.sh secop-v5.15
-# -> dist/secop-suite-<version>-carpeta-secop-v5.15.zip (carpeta raiz: secop-v5.15/)
+bin/build-zip.sh <carpeta>
+# -> dist/secop-suite-<version>-carpeta-<carpeta>.zip (carpeta raiz: <carpeta>/)
 ```
 
 ### Si la instalacion actual esta en otra carpeta
 
-Si WordPress instala la version nueva como un plugin aparte ("Plugin instalado con exito" en
-lugar de "Reemplazar el actual con el subido"), la instalacion actual esta en una carpeta con
-otro nombre. Desde la 5.19.1 no importa: pulse **Activar plugin**. La version nueva reconoce
-la copia anterior, la desactiva y retira su carpeta **sin ejecutar su desinstalador**; los
-datos y la configuracion se conservan y aparece el aviso "SECOP Suite: se reemplazo la copia
+Si WordPress instala la version nueva como un plugin aparte, la instalacion actual esta en una
+carpeta con otro nombre. Desde la 5.19.1 no importa: pulse **Activar plugin**. La version nueva
+reconoce la copia anterior, la desactiva y retira su carpeta **sin ejecutar su desinstalador**.
+Los datos y la configuracion se conservan y aparece el aviso "SECOP Suite: se reemplazo la copia
 anterior". A partir de ahi, cualquier ZIP que se suba se reconoce como el mismo plugin.
 
-### Opcion A: subir el ZIP del release (recomendada)
+### Respaldos de la configuracion (desde 5.19.2)
 
-1. Descargar `secop-suite.zip` de la seccion **Releases** del repositorio
-   (https://github.com/GobernaciondeNarino/suite-secop/releases), no el "Download ZIP".
-2. En WordPress ir a **Plugins > Anadir nuevo > Subir plugin**, elegir `secop-suite.zip` y
-   pulsar **Instalar ahora**.
-3. WordPress detecta que el plugin ya existe y muestra la comparacion de versiones: pulsar
-   **Reemplazar el actual con el subido** (WordPress 5.5 o superior).
-4. Los datos (tabla de contratos, graficas, filtros, cards, configuracion) se conservan; al
-   entrar al administrador el plugin ejecuta las migraciones pendientes.
+En **SECOP Suite > Configuracion > Respaldos**:
+
+- **Que guarda cada respaldo:**
+  - las graficas, los filtros y las cards, con toda su configuracion y su numero de ID (el que usan
+    los shortcodes `[secop_chart id="..."]`, `[secop_filter id="..."]` y `[secop_dep_chart card="..."]`);
+  - las opciones del plugin;
+  - la definicion de la vista de Contratacion.
+- **Que no guarda:** los contratos (se vuelven a importar desde datos.gov.co) ni las tablas de Sysman.
+- **Cuando se crean solos:**
+  - la primera vez que se carga cada version nueva;
+  - al desactivar el plugin;
+  - antes de cualquier cambio en la vista o en la tabla de contratos.
+
+  Tambien se pueden crear a mano. Se conservan los 25 automaticos mas recientes; los manuales no se
+  borran solos.
+- **Restaurar:** vuelve a crear las graficas, filtros y cards que falten con su mismo ID, actualiza
+  las existentes y recupera las opciones. Si se marca "con la vista", tambien recupera la vista. No
+  borra nada y antes guarda el estado actual como otro respaldo.
+- **Descargar / Restaurar desde archivo:** copia `.json` para guardar fuera del servidor o llevar
+  la configuracion a otro sitio.
+- Los respaldos viven en la tabla `secop_respaldos` (con el prefijo de tablas del sitio), que el desinstalador de las versiones
+  antiguas no borra. La lista de "Paginas que usan shortcodes del plugin" marca los shortcodes
+  que apuntan a elementos inexistentes.
 
 ### Opcion B: desde el escritorio de WordPress
 
 A partir de la version 5.15.1 el actualizador consulta los releases de
 `GobernaciondeNarino/suite-secop` (antes apuntaba a un repositorio inexistente y nunca
-ofrecia actualizaciones, asi que el primer salto hacia la 5.15.1 debe hacerse con la
-Opcion A). Cuando haya un release nuevo aparecera en **Escritorio > Actualizaciones** y en
+ofrecia actualizaciones, asi que el primer salto desde la 5.15.0 debe hacerse con el
+"Paso a paso" anterior). Cuando haya un release nuevo aparecera en **Escritorio > Actualizaciones** y en
 **Plugins**: pulsar **Actualizar ahora**. El actualizador descarga el asset `secop-suite.zip`,
 instala sobre la carpeta existente y reactiva el plugin solo si estaba activo.
 
@@ -95,7 +130,7 @@ instala sobre la carpeta existente y reactiva el plugin solo si estaba activo.
 
 ```bash
 bin/build-zip.sh
-# -> dist/secop-suite-<version>.zip y dist/secop-suite.zip (carpeta raiz: secop-suite/)
+# -> dist/secop-suite-<version>.zip y dist/secop-suite.zip (carpeta raiz: secop-suite-main/)
 ```
 
 El script toma la version del encabezado `Version:` de `secop-suite.php`, comprueba que
@@ -106,8 +141,8 @@ Para publicar un release: actualizar `Version:` y `SECOP_SUITE_VERSION`, hacer c
 empujar un tag con la misma version:
 
 ```bash
-git tag v5.15.1
-git push origin v5.15.1
+git tag v5.19.2
+git push origin v5.19.2
 ```
 
 El workflow `.github/workflows/release.yml` verifica que el tag coincida con la version,
@@ -115,12 +150,12 @@ ejecuta las pruebas, construye el ZIP y lo publica como asset del GitHub Release
 
 ### Si ya tiene dos copias instaladas
 
-1. Identificar la copia buena (carpeta `secop-suite/`). Desde la version 5.15.1, si hay dos copias,
-   el plugin muestra un aviso en el administrador indicando que carpeta esta en uso y cual sobra,
-   sin error fatal.
-2. **Desactivar** la copia sobrante en **Plugins**.
-3. **Borrar su carpeta por FTP/SFTP o administrador de archivos**. No usar "Eliminar".
-4. Si la copia buena no esta en `secop-suite/`, subir el ZIP del release (Opcion A) y
+1. Identificar la copia buena (la de produccion, carpeta `secop-suite-main/`). Desde la 5.19.1,
+   la pantalla de Plugins avisa si hay copias sobrantes y ofrece el boton "Usar la version X y
+   retirar las demas copias", que las retira sin ejecutar su desinstalador.
+2. Si prefiere hacerlo a mano: **desactivar** la copia sobrante en **Plugins** y **borrar su
+   carpeta por FTP/SFTP o administrador de archivos**. No usar "Eliminar" en copias 5.15.0-5.17.0.
+3. Si la copia buena no esta en `secop-suite-main/`, subir el ZIP (paso a paso anterior) y
    reemplazar.
 
 ### Datos al desinstalar

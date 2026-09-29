@@ -71,10 +71,30 @@ wp secop truncate --yes                            # Limpiar datos
 - Sistema de logs con información del sistema
 - Panel de información de API REST y comandos CLI
 - **Depuración BD** (v5.17.0): diagnóstico de duplicados, eliminación con respaldo y restauración por lote, restauración del índice único por número de contrato
+- **Respaldos** (v5.19.2): instantáneas automáticas de gráficas, filtros, cards, opciones y vista (conservando los IDs de los shortcodes), con restauración, descarga e importación en `.json`
 
 ---
 
 ## Changelog
+
+### v5.19.2 — Actualización sobre la instalación de producción sin tocar datos + respaldos de configuración (2026-09-29)
+
+Revisión detallada del código de producción (`secop-v5.15/`, idéntico a la 5.15.0, instalado en la carpeta `secop-suite-main/`). Por qué una instalación podía «reemplazar toda la BD y los shortcodes»:
+
+- WordPress identifica el plugin por el **nombre de su carpeta**. Un ZIP cuya carpeta raíz no se llama `secop-suite-main` se instala como **otro plugin** en lugar de reemplazar el actual.
+- **Eliminar** después la copia 5.15.0 ejecuta su `uninstall.php`, que borra la tabla de contratos, todas las opciones y todas las gráficas y filtros (los shortcodes `[secop_chart id="…"]` quedan apuntando a nada).
+- Además, **activar** cualquier versión anterior a esta reescribía la vista de Contratación (`CREATE OR REPLACE VIEW`, se perdía una vista ajustada en producción) y aplicaba `dbDelta` a la tabla de contratos. La migración de esquema hacía `DROP TABLE` y `DROP VIEW`.
+
+Cambios:
+
+- **ZIP con la carpeta raíz `secop-suite-main/`**, la de producción: WordPress muestra «Reemplazar el actual con el subido», que solo cambia los archivos. No ejecuta activación, desactivación ni desinstalación, así que la base de datos, la vista, las gráficas, los filtros, las cards, las opciones y las páginas quedan intactas. `bin/build-zip.sh otra-carpeta` genera el ZIP para otra carpeta.
+- **Activar ya no modifica datos**: la tabla de contratos y la vista solo se crean si no existen. Una vista existente con la estructura vigente se conserva tal cual, aunque esté personalizada. Una vista de estructura antigua solo se reemplaza en una migración, y antes se respalda su definición.
+- **La migración de esquema anterior a 5.0.0 ya no borra la tabla**: la renombra a `…_respaldo_AAAAMMDD_HHMMSS` antes de crear la nueva.
+- **Nueva pestaña Configuración › Respaldos**:
+  - **Qué guarda**: gráficas, filtros y cards con toda su configuración y su **mismo ID** (el que usan los shortcodes), las opciones del plugin y la definición de la vista. Se guarda en la tabla `secop_respaldos` (con el prefijo de tablas del sitio, p. ej. `wp_secop_respaldos`), que el desinstalador de las versiones antiguas no conoce y no borra.
+  - **Respaldos automáticos**: la primera vez que se carga cada versión, al desactivar el plugin y antes de cualquier cambio en la vista o en la tabla. También se pueden crear a mano.
+  - **Restaurar, descargar e importar** desde el propio respaldo o desde un archivo `.json`. Restaurar no borra nada y antes guarda el estado actual.
+  - Lista las páginas que usan shortcodes del plugin y marca los que apuntan a gráficas, filtros o cards inexistentes.
 
 ### v5.19.1 — Reconoce la versión anterior aunque esté en otra carpeta (2026-09-29)
 
