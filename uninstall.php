@@ -86,6 +86,11 @@ $wpdb->query("DROP TABLE IF EXISTS {$table}"); // phpcs:ignore
 $dedup_backup = $wpdb->prefix . 'secop_dedup_backup';
 $wpdb->query("DROP TABLE IF EXISTS `{$dedup_backup}`"); // phpcs:ignore
 
+// Eliminar los respaldos de configuración (v5.19.2)
+$config_backup = $wpdb->prefix . 'secop_respaldos';
+$wpdb->query("DROP TABLE IF EXISTS `{$config_backup}`"); // phpcs:ignore
+delete_option('secop_respaldos_ultima_version');
+
 // Eliminar el VIEW del módulo de seguimiento
 $view = $wpdb->prefix . 'vista_secop_sysman';
 $wpdb->query("DROP VIEW IF EXISTS `{$view}`"); // phpcs:ignore

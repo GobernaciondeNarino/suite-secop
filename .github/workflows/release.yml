@@ -1,7 +1,7 @@
 name: Release
 
 # Al publicar un tag vX.Y.Z se construye el ZIP instalable (carpeta raíz
-# «secop-suite/») y se adjunta a un GitHub Release. El actualizador del plugin
+# «secop-suite-main/», la de producción) y se adjunta a un GitHub Release. El actualizador del plugin
 # (includes/class-updater.php) descarga el asset «secop-suite.zip».
 #
 #   git tag v5.18.0 && git push origin v5.18.0

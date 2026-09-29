@@ -312,6 +312,15 @@ final class Visualizer
         return array_values(array_unique($tables));
     }
 
+    /**
+     * Valida una consulta personalizada con las mismas reglas del editor (entrada
+     * y salida con barras, como $_POST). Devuelve '' si no es válida.
+     */
+    public function validate_custom_query(string $query): string
+    {
+        return $this->sanitize_custom_query($query);
+    }
+
     private function sanitize_custom_query(string $query): string
     {
         $trimmed = trim($query);

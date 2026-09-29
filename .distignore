@@ -14,6 +14,9 @@
 /.distignore
 /.claude/
 
+# Copia de referencia del plugin de producción subida al repositorio (no se empaqueta)
+/secop-v5.15/
+
 # Desarrollo, pruebas, documentación interna y artefactos de compilación
 /tests/
 /docs/

@@ -1960,3 +1960,21 @@
 }
 .ss-config-section-title .dashicons { font-size: 22px; width: 22px; height: 22px; }
 .ss-config-subviews { margin: 0 0 12px; }
+
+/* ==========================================================================
+   Configuración › Respaldos
+   ========================================================================== */
+.ss-respaldos .button .dashicons { vertical-align: text-bottom; }
+.ss-respaldos-acciones { display: flex; flex-wrap: wrap; gap: 16px 32px; align-items: flex-start; }
+.ss-respaldos-importar { display: flex; flex-direction: column; gap: 6px; max-width: 100%; }
+.ss-respaldos-importar input[type="file"] { max-width: 100%; }
+.ss-respaldos-botones { white-space: nowrap; }
+.ss-respaldos-botones form { display: inline-flex; align-items: center; gap: 6px; margin: 4px 0 0 6px; }
+.ss-respaldos-vista { font-size: 12px; }
+.ss-respaldos-paginas code { display: inline-block; margin: 2px 0; overflow-wrap: anywhere; white-space: normal; }
+.ss-respaldos-roto { background: #fcf0f1; color: #8a2424; }
+.ss-respaldos-roto-txt { color: #b32d2e; font-size: 12px; }
+@media screen and (max-width: 782px) {
+    .ss-respaldos-botones { white-space: normal; }
+    .ss-respaldos-botones form { display: flex; flex-wrap: wrap; margin: 6px 0 0; }
+}

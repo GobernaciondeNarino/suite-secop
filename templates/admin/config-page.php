@@ -3,7 +3,7 @@
  * Template: Configuración — contenedor con pestañas.
  *
  * Agrupa en una sola página los antiguos submenús Importar Datos, Registros,
- * Depuración BD y Logs. Cada pestaña imprime su propio contenido (sin .wrap ni h1).
+ * Depuración BD y Logs, más la pestaña Respaldos. Cada pestaña imprime su propio contenido (sin .wrap ni h1).
  *
  * Variables inyectadas por Plugin::render_config_page():
  * - $tabs       : array<string,string> slug => etiqueta, en orden
