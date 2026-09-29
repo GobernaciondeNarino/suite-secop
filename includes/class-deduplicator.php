@@ -2,8 +2,11 @@
 /**
  * Deduplicator — Módulo de depuración de la base de datos (v5.17.0).
  *
- * Detecta y elimina registros duplicados en las tablas del plugin (contratos
- * SECOP, tablas Sysman y tablas dat_*). Principios de seguridad:
+ * Detecta y elimina registros duplicados en la tabla de contratos SECOP, la
+ * única que pertenece al plugin. Las tablas presupuestales (Sysman) y las dat_*
+ * son externas: el plugin solo las consulta y nunca borra filas de ellas (hasta
+ * la 5.19.1 se podían depurar; los lotes de entonces aún pueden restaurarse).
+ * Principios de seguridad:
  *  - Solo tablas en lista blanca, con clave primaria de una columna.
  *  - Un "duplicado" es una fila cuyas columnas de criterio coinciden EXACTAMENTE
  *    con las de otra (huella SHA-256 con codificación sin ambigüedades: distingue
@@ -125,38 +128,46 @@ final class Deduplicator
     // ── Tablas permitidas ──────────────────────────────────────
 
     /**
-     * Tablas depurables: contratos SECOP, tablas Sysman y dat_*, solo si son
-     * tablas base (no vistas) con clave primaria de una sola columna.
+     * Tablas depurables: SOLO la tabla de contratos SECOP (tabla base con clave
+     * primaria de una columna). Las tablas presupuestales (Sysman) y dat_* no
+     * pertenecen al plugin: nunca se analizan ni se borran filas de ellas.
      *
      * @return array<string,array{label:string,pk:string,columns:array<string,array{type:string,default:?string,extra:string}>}>
      */
     public function tables(): array
     {
-        global $wpdb;
-        $candidates = [
-            $this->db->get_table_name()                   => __('Contratos SECOP', 'secop-suite'),
-            $wpdb->prefix . 'sysman_auxiliar_cuentas'     => __('Sysman — Auxiliar de cuentas (asientos presupuestales)', 'secop-suite'),
-            $wpdb->prefix . 'sysman_plan_presupuestal'    => __('Sysman — Plan presupuestal (rubros)', 'secop-suite'),
-        ];
-        $dat = $wpdb->get_col($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($wpdb->prefix . 'dat_') . '%')) ?: [];
-        foreach ($dat as $t) {
-            $candidates[$t] = $t;
-        }
+        $table = $this->db->get_table_name();
+        $meta  = $this->table_meta($table, __('Contratos SECOP', 'secop-suite'));
+        return $meta ? [$table => $meta] : [];
+    }
 
-        $tables = [];
-        foreach ($candidates as $table => $label) {
-            $type = $wpdb->get_row($wpdb->prepare('SHOW FULL TABLES LIKE %s', $wpdb->esc_like($table)), ARRAY_N);
-            if (!$type || ($type[1] ?? '') !== 'BASE TABLE') {
-                continue;
-            }
-            $columns = $this->describe($table);
-            $pk      = $this->primary_key($columns);
-            if ($pk === null) {
-                continue;
-            }
-            $tables[$table] = ['label' => $label, 'pk' => $pk, 'columns' => $columns];
+    /**
+     * Tablas en las que se puede RESTAURAR un lote: la de contratos y, solo para
+     * deshacer lotes borrados por versiones anteriores (hasta la 5.19.1), las
+     * tablas Sysman y dat_* que entonces eran depurables.
+     */
+    private function restorable_table(string $table): ?array
+    {
+        global $wpdb;
+        $legacy = in_array($table, [$wpdb->prefix . 'sysman_auxiliar_cuentas', $wpdb->prefix . 'sysman_plan_presupuestal'], true)
+            || (str_starts_with($table, $wpdb->prefix . 'dat_') && preg_match('/^[A-Za-z0-9_]+$/', $table));
+        if ($table !== $this->db->get_table_name() && !$legacy) {
+            return null;
         }
-        return $tables;
+        return $this->table_meta($table, $table);
+    }
+
+    /** Tabla base con clave primaria de una columna, o null. */
+    private function table_meta(string $table, string $label): ?array
+    {
+        global $wpdb;
+        $type = $wpdb->get_row($wpdb->prepare('SHOW FULL TABLES LIKE %s', $wpdb->esc_like($table)), ARRAY_N);
+        if (!$type || ($type[1] ?? '') !== 'BASE TABLE') {
+            return null;
+        }
+        $columns = $this->describe($table);
+        $pk      = $this->primary_key($columns);
+        return $pk === null ? null : ['label' => $label, 'pk' => $pk, 'columns' => $columns];
     }
 
     /** @return array<string,array{type:string,default:?string,extra:string,key:string}> */
@@ -189,7 +200,6 @@ final class Deduplicator
      */
     public function presets(string $table, array $meta): array
     {
-        global $wpdb;
         $cols  = $meta['columns'];
         $exact = array_values(array_diff(array_keys($cols), self::auto_columns($cols, $meta['pk'])));
 
@@ -206,22 +216,6 @@ final class Deduplicator
             $candidates['contrato_repetido'] = [
                 __('Mismo contrato registrado con dos números: igual proceso, contratista, valor y fecha de firma', 'secop-suite'),
                 ['numero_de_proceso', 'nom_raz_social_contratista', 'valor_contrato', 'fecha_de_firma_del_contrato'],
-            ];
-        } elseif ($table === $wpdb->prefix . 'sysman_auxiliar_cuentas') {
-            $candidates['asiento_repetido'] = [
-                __('Mismo asiento: igual documento, tipo, número de comprobante, rubro, fecha y valores', 'secop-suite'),
-                ['nrodocumento', 'tipocpte', 'numero', 'rubro', 'fecha', 'valordebito', 'valorcredito'],
-            ];
-        } elseif ($table === $wpdb->prefix . 'sysman_plan_presupuestal') {
-            $rubro = ['codigo'];
-            foreach (['anio', 'vigencia'] as $year_col) {
-                if (isset($cols[$year_col])) {
-                    $rubro[] = $year_col;
-                }
-            }
-            $candidates['rubro_repetido'] = [
-                __('Mismo código de rubro (un rubro repetido multiplica las filas de la vista de consulta)', 'secop-suite'),
-                $rubro,
             ];
         }
 
@@ -463,7 +457,7 @@ final class Deduplicator
         global $wpdb;
         $this->ensure_backup_table();
         $backup = $this->backup_table();
-        $tables = $this->tables();
+        $tables = [];
         $rows   = $wpdb->get_results($wpdb->prepare("SELECT id, table_name, row_data FROM `{$backup}` WHERE batch_id = %s ORDER BY id", $batch_id), ARRAY_A) ?: [];
 
         $restored = 0;
@@ -472,7 +466,10 @@ final class Deduplicator
         foreach ($rows as $r) {
             $table = (string) $r['table_name'];
             $data  = json_decode((string) $r['row_data'], true);
-            if (!isset($tables[$table]) || !is_array($data)) {
+            if (!array_key_exists($table, $tables)) {
+                $tables[$table] = $this->restorable_table($table);
+            }
+            if ($tables[$table] === null || !is_array($data)) {
                 $failed++;
                 continue;
             }
@@ -557,16 +554,6 @@ final class Deduplicator
                 'ok'    => $shared === 0,
                 'label' => __('Procesos con varios contratos', 'secop-suite'),
                 'text'  => sprintf(__('Procesos con más de un contrato: %d. En la vista de consulta los asientos de Sysman se cruzan por número de proceso, así que esos contratos comparten los mismos asientos. Si son el mismo contrato registrado dos veces, depure con el criterio "Mismo contrato registrado con dos números".', 'secop-suite'), $shared),
-            ];
-        }
-
-        $plan = $wpdb->prefix . 'sysman_plan_presupuestal';
-        if (isset($tables[$plan]['columns']['codigo'])) {
-            $rep = (int) $wpdb->get_var("SELECT COUNT(*) FROM (SELECT codigo FROM `{$plan}` GROUP BY codigo HAVING COUNT(*) > 1) t");
-            $diag['checks'][] = [
-                'ok'    => $rep === 0,
-                'label' => __('Rubros repetidos en el plan presupuestal', 'secop-suite'),
-                'text'  => sprintf(__('Códigos de rubro que aparecen más de una vez: %d. Cada repetición multiplica las filas de la vista de consulta para los asientos de ese rubro.', 'secop-suite'), $rep),
             ];
         }
 

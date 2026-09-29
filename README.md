@@ -70,7 +70,7 @@ wp secop truncate --yes                            # Limpiar datos
 - Modal de detalle de contrato con información completa
 - Sistema de logs con información del sistema
 - Panel de información de API REST y comandos CLI
-- **Depuración BD** (v5.17.0): diagnóstico de duplicados, eliminación con respaldo y restauración por lote, restauración del índice único por número de contrato
+- **Depuración BD** (v5.17.0; desde la 5.19.2 solo la tabla de contratos): diagnóstico de duplicados, eliminación con respaldo y restauración por lote, restauración del índice único por número de contrato
 - **Respaldos** (v5.19.2): instantáneas automáticas de gráficas, filtros, cards, opciones y vista (conservando los IDs de los shortcodes), con restauración, descarga e importación en `.json`
 
 ---
@@ -101,7 +101,16 @@ Cambios:
     - Desde un **archivo** no se restaura la vista, y las consultas personalizadas se validan igual que en el editor de gráficas.
     - Un archivo de otro sitio no sobrescribe elementos con el mismo ID.
 - **La importación automática ya no se programa sola al actualizar**: si está activada pero sin programar (la 5.15.0 solo la programaba al activar el plugin), las páginas del plugin lo avisan con el botón «Programar la importación automática». Actualizar el plugin nunca inicia una importación.
+- **Las tablas presupuestales (Sysman) no se modifican nunca**: el plugin solo las consulta, para la vista de Contratación. **Depuración BD** trabaja solo sobre la tabla de contratos; hasta la 5.19.1 también permitía borrar filas duplicadas de `sysman_auxiliar_cuentas`, `sysman_plan_presupuestal` y las tablas `dat_*`. Los lotes borrados entonces aún pueden restaurarse, para deshacerlos.
 - La migración anterior a 5.0.0 se cancela sin tocar nada si no puede renombrar la tabla. Antes de reemplazar una vista antigua, su definición también queda en el log.
+
+**Verificado en WordPress 7.1.2** con el código de producción (5.15.0) instalado en `secop-suite-main/`. El entorno de prueba tenía una vista personalizada, gráficas publicadas, en borrador, pendientes, privadas y en la papelera (una con consulta personalizada), filtros, cards de preset y a medida, y 5 páginas con 38 shortcodes. Resultado: 136 comprobaciones sin fallos. Las tablas Sysman tienen el mismo checksum en todas las fases.
+
+- **Subir el ZIP**: WordPress ofrece «Reemplazar el actual con el subido» (5.15.0 → 5.19.2). Al reemplazar no se ejecuta ningún hook.
+- **Tras reemplazar**: las opciones, los posts y sus metas son idénticos byte a byte, y también lo son el checksum de las tablas, la definición y los datos de la vista, el cron, el HTML de las páginas y los datos que cargan las gráficas.
+- **Pérdida simulada**: se ejecutó el desinstalador de la 5.15.0 (el que borró producción). Los respaldos sobrevivieron y, desde la pestaña Respaldos, se recuperaron los 18 elementos con sus mismos IDs, sus metas idénticas, las opciones, la vista y el cron.
+- **ZIP en otra carpeta y «Activar»**: la versión nueva retira la copia 5.15.0 sin ejecutar su desinstalador, y los datos quedan intactos.
+- Única pérdida conocida: el log de importación de la 5.15.x, que estaba dentro de la carpeta del plugin.
 
 ### v5.19.1 — Reconoce la versión anterior aunque esté en otra carpeta (2026-09-29)
 

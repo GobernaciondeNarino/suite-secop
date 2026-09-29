@@ -101,6 +101,8 @@ En **SECOP Suite > Configuracion > Respaldos**:
   - las opciones del plugin;
   - la definicion de la vista de Contratacion.
 - **Que no guarda:** los contratos (se vuelven a importar desde datos.gov.co) ni las tablas de Sysman.
+  El plugin nunca modifica las tablas presupuestales de Sysman: solo las consulta para la vista de
+  Contratacion. Depuracion BD trabaja unicamente sobre la tabla de contratos.
 - **Cuando se crean solos:**
   - la primera vez que se carga cada version nueva;
   - al desactivar el plugin;
