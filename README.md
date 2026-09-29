@@ -76,6 +76,18 @@ wp secop truncate --yes                            # Limpiar datos
 
 ## Changelog
 
+### v5.19.1 — Reconoce la versión anterior aunque esté en otra carpeta (2026-09-29)
+
+WordPress reconoce un plugin solo por el nombre de su carpeta: si la instalación de producción está en una carpeta distinta a `secop-suite/` (p. ej. `suite-secop-main/`, del «Download ZIP» de GitHub), al subir la versión nueva la instala como un plugin aparte. Ahora el plugin reconoce las demás copias de SECOP Suite **por su encabezado, sin importar la carpeta**:
+
+- **Al pulsar «Activar» en la versión nueva, reemplaza a la anterior**: la desactiva sin ejecutar sus hooks y retira su carpeta **sin ejecutar su desinstalador**. Contratos, gráficas, filtros, cards, configuración y cron se conservan. Aviso: «SECOP Suite: se reemplazó la copia anterior».
+- **Sin error fatal en ningún orden de carga**: antes, si la copia nueva se cargaba antes que una 5.15.0–5.17.0 (orden alfabético de carpetas), esa copia antigua fallaba con «Cannot declare class SecopSuite\Plugin» y tumbaba el sitio. La clase principal se movió a `includes/class-plugin.php` y el nuevo `includes/copy-manager.php` decide qué copia se carga.
+- **«Eliminar» sobre otra copia ya no borra datos**: se desactiva su `uninstall.php` antes de que WordPress lo ejecute.
+- Si quedan copias sobrantes, la pantalla de Plugins lo avisa con el botón «Usar la versión X y retirar las demás copias».
+- Con la 5.19.1 instalada, cualquier ZIP que se suba (incluido el de GitHub) se reconoce como el mismo plugin y WordPress ofrece «Reemplazar el actual con el subido».
+
+Verificado en WordPress real partiendo de una 5.15.0 configurada en otra carpeta (en los dos órdenes de carga): una sola copia al final, datos intactos, sin errores; recorrido completo del plugin: 40 comprobaciones, 0 fallos.
+
 ### v5.19.0 — Cambios reaplicados sobre la 5.15.0 sin alterar la configuración existente (2026-09-28)
 
 Tras restaurar la 5.15.0 (la configuración de producción se había perdido al **eliminar** la copia 5.15.0 para instalar otra en una carpeta distinta: su `uninstall.php` borraba contratos, opciones, gráficas y filtros), los cambios se reaplicaron por etapas sobre la 5.15.1 y se verificaron en WordPress real con una configuración de producción. Reúne lo que se había publicado como 5.16.0–5.18.0, **corrigiendo lo que alteraba configuraciones existentes**:

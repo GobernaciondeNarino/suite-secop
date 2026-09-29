@@ -1,4 +1,4 @@
-# SECOP Suite v5.19.0 - Guia de Instalacion en WordPress
+# SECOP Suite v5.19.1 - Guia de Instalacion en WordPress
 
 ## Requisitos del Sistema
 
@@ -49,6 +49,15 @@ La carpeta del plugin en produccion es siempre `wp-content/plugins/secop-suite/`
 solo reemplaza la version instalada cuando el ZIP que se sube tiene esa misma carpeta raiz
 (`secop-suite/`). El boton **Code > Download ZIP** de GitHub genera una carpeta
 `suite-secop-<rama>/`, por eso WordPress la instalaba como un plugin distinto: **no use ese ZIP**.
+
+### Si la instalacion actual esta en otra carpeta
+
+Si WordPress instala la version nueva como un plugin aparte ("Plugin instalado con exito" en
+lugar de "Reemplazar el actual con el subido"), la instalacion actual esta en una carpeta con
+otro nombre. Desde la 5.19.1 no importa: pulse **Activar plugin**. La version nueva reconoce
+la copia anterior, la desactiva y retira su carpeta **sin ejecutar su desinstalador**; los
+datos y la configuracion se conservan y aparece el aviso "SECOP Suite: se reemplazo la copia
+anterior". A partir de ahi, cualquier ZIP que se suba se reconoce como el mismo plugin.
 
 ### Opcion A: subir el ZIP del release (recomendada)
 
