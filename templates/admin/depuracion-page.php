@@ -21,7 +21,7 @@ if (!defined('ABSPATH')) {
     </h2>
 
     <p class="ss-dedup-lead">
-        <?php esc_html_e('Detecte y elimine registros duplicados en las tablas de contratos y de Sysman. Primero analice: verá cuántos grupos hay y una muestra de cada uno. Al eliminar se conserva siempre un registro por grupo y cada fila borrada se guarda en un respaldo que puede restaurarse.', 'secop-suite'); ?>
+        <?php esc_html_e('Detecte y elimine registros duplicados en la tabla de contratos SECOP. Las tablas presupuestales (Sysman) no pertenecen al plugin: solo se consultan y nunca se modifican. Primero analice: verá cuántos grupos hay y una muestra de cada uno. Al eliminar se conserva siempre un registro por grupo y cada fila borrada se guarda en un respaldo que puede restaurarse.', 'secop-suite'); ?>
     </p>
 
     <?php if (empty($tables)) : ?>
